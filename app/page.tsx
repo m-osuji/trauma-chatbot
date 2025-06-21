@@ -8,6 +8,8 @@ import { VoiceCircle } from "@/components/voice-circle"
 import { QuickExit } from "@/components/quick-exit"
 import { DynamicForm } from "@/components/dynamic-form"
 import { ChevronDown, ChevronUp, Mic, MicOff, Send, Heart, Phone, ExternalLink, ArrowLeft, ArrowRight } from "lucide-react"
+import { SecureNLPPipeline } from "@/lib/secure-nlp"
+import { SessionStorage } from "@/lib/session-storage"
 
 type Stage = "landing" | "conversation" | "form" | "review" | "complete"
 
@@ -160,13 +162,30 @@ export default function TraumaVoiceForm() {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
     api: "/api/chat",
     streamProtocol: "text", // Use text protocol for simple JSON responses
-    onFinish: (assistantMessage) => {
-      extractFormData(assistantMessage.content)
+    onFinish: async (assistantMessage) => {
+      // Process the user's last message for form data extraction
+      const lastUserMessage = messages
+        .slice()
+        .reverse()
+        .find((m) => m.role === "user")?.content || ""
+      
+      if (lastUserMessage) {
+        await extractFormData(lastUserMessage)
+      }
     },
     onError: (error) => {
       console.error("Chat error:", error)
     },
   })
+
+  // Also extract form data when user submits a message
+  const handleSubmitWithExtraction = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (input.trim()) {
+      await extractFormData(input)
+      handleSubmit(e)
+    }
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -175,6 +194,23 @@ export default function TraumaVoiceForm() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Load session data on component mount
+  useEffect(() => {
+    const savedData = SessionStorage.getSessionData()
+    if (savedData) {
+      setFormData(savedData)
+      console.log('📥 Restored session data:', savedData)
+    }
+  }, [])
+
+  // Save form data to session storage whenever it changes
+  useEffect(() => {
+    if (Object.keys(formData).length > 0) {
+      SessionStorage.saveSessionData(formData)
+      console.log('💾 Saved session data:', formData)
+    }
+  }, [formData])
 
   // Audio level detection
   const startAudioAnalysis = async () => {
@@ -276,127 +312,56 @@ export default function TraumaVoiceForm() {
     }
   }, [handleInputChange])
 
-  const extractFormData = (content: string) => {
-    // Enhanced extraction logic for user messages
-    const newFormData = { ...formData }
-
-    // Look at the last user message for extraction
-    const lastUserMessage =
-      messages
-        .slice()
-        .reverse()
-        .find((m) => m.role === "user")?.content || ""
-
-    // Extract name (first name and surname)
-    const namePatterns = [
-      /my name is ([^.!?]+)/i, 
-      /i'm ([^.!?]+)/i, 
-      /call me ([^.!?]+)/i,
-      /i am ([^.!?]+)/i
-    ]
-    for (const pattern of namePatterns) {
-      const match = lastUserMessage.match(pattern)
-      if (match && !newFormData.first_name) {
-        const fullName = match[1].trim()
-        const nameParts = fullName.split(' ')
-        newFormData.first_name = nameParts[0] || ''
-        newFormData.surname = nameParts.slice(1).join(' ') || ''
-        break
+  const extractFormData = async (content: string) => {
+    console.log('🔍 Extracting form data from user input')
+    try {
+      const nlpPipeline = SecureNLPPipeline.getInstance()
+      const processed = await nlpPipeline.processInput(content)
+      
+      // SECURITY: Log only non-sensitive metadata
+      console.log('📊 NLP Processing Results:', {
+        sentiment: processed.sentiment,
+        intent: processed.intent,
+        riskLevel: processed.riskLevel,
+        confidence: processed.confidence.toFixed(2),
+        dataFieldsExtracted: Object.keys(processed.extractedData).length
+      })
+      
+      // Update form data with extracted information
+      setFormData((prev) => {
+        const newData = { ...prev, ...processed.extractedData }
+        // SECURITY: Log only field names, not values
+        console.log('💾 Updated form fields:', Object.keys(processed.extractedData))
+        return newData
+      })
+      
+      return processed
+    } catch (error) {
+      console.error('Secure NLP processing failed:', error)
+      // Fallback to basic extraction if NLP fails
+      const newFormData = { ...formData }
+      
+      // Basic name extraction as fallback
+      const namePatterns = [
+        /my name is ([^.!?]+)/i, 
+        /i'm ([^.!?]+)/i, 
+        /call me ([^.!?]+)/i,
+        /i am ([^.!?]+)/i
+      ]
+      for (const pattern of namePatterns) {
+        const match = content.match(pattern)
+        if (match && !newFormData.first_name) {
+          const fullName = match[1].trim()
+          const nameParts = fullName.split(' ')
+          newFormData.first_name = nameParts[0] || ''
+          newFormData.surname = nameParts.slice(1).join(' ') || ''
+          console.log('🔧 Fallback name extraction completed')
+          break
+        }
       }
+      
+      setFormData(newFormData)
     }
-
-    // Extract email
-    const emailMatch = lastUserMessage.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/)
-    if (emailMatch && !newFormData.email) {
-      newFormData.email = emailMatch[0]
-    }
-
-    // Extract phone number
-    const phoneMatch = lastUserMessage.match(/(\+?[\d\s\-\(\)]{10,})/)
-    if (phoneMatch && !newFormData.phone_number) {
-      newFormData.phone_number = phoneMatch[1].replace(/\s+/g, '')
-    }
-
-    // Extract date of birth
-    const dobPatterns = [
-      /born on (\d{1,2})\/(\d{1,2})\/(\d{4})/i,
-      /(\d{1,2})\/(\d{1,2})\/(\d{4})/i,
-      /(\d{1,2})-(\d{1,2})-(\d{4})/i
-    ]
-    for (const pattern of dobPatterns) {
-      const match = lastUserMessage.match(pattern)
-      if (match && !newFormData.dob_day) {
-        newFormData.dob_day = match[1]
-        newFormData.dob_month = match[2]
-        newFormData.dob_year = match[3]
-        break
-      }
-    }
-
-    // Extract sex/gender
-    const sexPatterns = [
-      /i am (female|male)/i,
-      /i'm (female|male)/i,
-      /(female|male)/i
-    ]
-    for (const pattern of sexPatterns) {
-      const match = lastUserMessage.match(pattern)
-      if (match && !newFormData.sex) {
-        newFormData.sex = match[1].charAt(0).toUpperCase() + match[1].slice(1)
-        break
-      }
-    }
-
-    // Extract address information
-    const addressPatterns = [
-      /i live in ([^.!?]+)/i,
-      /my address is ([^.!?]+)/i,
-      /i'm from ([^.!?]+)/i
-    ]
-    for (const pattern of addressPatterns) {
-      const match = lastUserMessage.match(pattern)
-      if (match && !newFormData.town_city) {
-        newFormData.town_city = match[1].trim()
-        break
-      }
-    }
-
-    // Legacy extraction for backward compatibility
-    // Extract age
-    const ageMatch = lastUserMessage.match(/i am (\d+)|i'm (\d+)|(\d+) years old/i)
-    if (ageMatch && !newFormData.age) {
-      newFormData.age = ageMatch[1] || ageMatch[2] || ageMatch[3]
-    }
-
-    // Extract incident type
-    const incidentPatterns = [
-      /it was (assault|harassment|abuse|violence|attack)/i,
-      /(assault|harassment|abuse|violence|attack) happened/i,
-    ]
-    for (const pattern of incidentPatterns) {
-      const match = lastUserMessage.match(pattern)
-      if (match && !newFormData.incident_type) {
-        newFormData.incident_type = match[1] || match[2]
-        break
-      }
-    }
-
-    // Extract date information
-    const datePatterns = [
-      /last (week|month|year)/i,
-      /(\d+) (days?|weeks?|months?|years?) ago/i,
-      /(yesterday|today)/i,
-      /in (january|february|march|april|may|june|july|august|september|october|november|december)/i,
-    ]
-    for (const pattern of datePatterns) {
-      const match = lastUserMessage.match(pattern)
-      if (match && !newFormData.date_occurred) {
-        newFormData.date_occurred = match[0]
-        break
-      }
-    }
-
-    setFormData(newFormData)
   }
 
   const startRecording = () => {
@@ -572,7 +537,7 @@ export default function TraumaVoiceForm() {
           </div>
 
           <div className="flex-shrink-0 space-y-4">
-            <form onSubmit={handleSubmit} className="flex gap-3">
+            <form onSubmit={handleSubmitWithExtraction} className="flex gap-3">
               <input
                 value={input}
                 onChange={handleInputChange}
