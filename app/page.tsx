@@ -6,12 +6,32 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { VoiceCircle } from "@/components/voice-circle"
 import { QuickExit } from "@/components/quick-exit"
-import { FormDisplay } from "@/components/form-display"
+import { DynamicForm } from "@/components/dynamic-form"
 import { ChevronDown, ChevronUp, Mic, MicOff, Send, Heart, Phone, ExternalLink } from "lucide-react"
 
 type Stage = "landing" | "conversation" | "review" | "complete"
 
+// Updated to match the JSON structure from your-details.json
 interface FormData {
+  // Personal details
+  title?: string
+  first_name?: string
+  surname?: string
+  email?: string
+  dob_day?: string
+  dob_month?: string
+  dob_year?: string
+  sex?: string
+  phone_number?: string
+  
+  // Address fields
+  building_name?: string
+  building_number?: string
+  street?: string
+  town_city?: string
+  postcode?: string
+  
+  // Legacy fields for backward compatibility
   name?: string
   age?: string
   incident_type?: string
@@ -167,16 +187,81 @@ export default function TraumaVoiceForm() {
         .reverse()
         .find((m) => m.role === "user")?.content || ""
 
-    // Extract name
-    const namePatterns = [/my name is ([^.!?]+)/i, /i'm ([^.!?]+)/i, /call me ([^.!?]+)/i]
+    // Extract name (first name and surname)
+    const namePatterns = [
+      /my name is ([^.!?]+)/i, 
+      /i'm ([^.!?]+)/i, 
+      /call me ([^.!?]+)/i,
+      /i am ([^.!?]+)/i
+    ]
     for (const pattern of namePatterns) {
       const match = lastUserMessage.match(pattern)
-      if (match && !newFormData.name) {
-        newFormData.name = match[1].trim()
+      if (match && !newFormData.first_name) {
+        const fullName = match[1].trim()
+        const nameParts = fullName.split(' ')
+        newFormData.first_name = nameParts[0] || ''
+        newFormData.surname = nameParts.slice(1).join(' ') || ''
         break
       }
     }
 
+    // Extract email
+    const emailMatch = lastUserMessage.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/)
+    if (emailMatch && !newFormData.email) {
+      newFormData.email = emailMatch[0]
+    }
+
+    // Extract phone number
+    const phoneMatch = lastUserMessage.match(/(\+?[\d\s\-\(\)]{10,})/)
+    if (phoneMatch && !newFormData.phone_number) {
+      newFormData.phone_number = phoneMatch[1].replace(/\s+/g, '')
+    }
+
+    // Extract date of birth
+    const dobPatterns = [
+      /born on (\d{1,2})\/(\d{1,2})\/(\d{4})/i,
+      /(\d{1,2})\/(\d{1,2})\/(\d{4})/i,
+      /(\d{1,2})-(\d{1,2})-(\d{4})/i
+    ]
+    for (const pattern of dobPatterns) {
+      const match = lastUserMessage.match(pattern)
+      if (match && !newFormData.dob_day) {
+        newFormData.dob_day = match[1]
+        newFormData.dob_month = match[2]
+        newFormData.dob_year = match[3]
+        break
+      }
+    }
+
+    // Extract sex/gender
+    const sexPatterns = [
+      /i am (female|male)/i,
+      /i'm (female|male)/i,
+      /(female|male)/i
+    ]
+    for (const pattern of sexPatterns) {
+      const match = lastUserMessage.match(pattern)
+      if (match && !newFormData.sex) {
+        newFormData.sex = match[1].charAt(0).toUpperCase() + match[1].slice(1)
+        break
+      }
+    }
+
+    // Extract address information
+    const addressPatterns = [
+      /i live in ([^.!?]+)/i,
+      /my address is ([^.!?]+)/i,
+      /i'm from ([^.!?]+)/i
+    ]
+    for (const pattern of addressPatterns) {
+      const match = lastUserMessage.match(pattern)
+      if (match && !newFormData.town_city) {
+        newFormData.town_city = match[1].trim()
+        break
+      }
+    }
+
+    // Legacy extraction for backward compatibility
     // Extract age
     const ageMatch = lastUserMessage.match(/i am (\d+)|i'm (\d+)|(\d+) years old/i)
     if (ageMatch && !newFormData.age) {
@@ -239,7 +324,15 @@ export default function TraumaVoiceForm() {
   }
 
   const handleFormUpdate = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormData((prev) => {
+      // Handle date-triple fields
+      if (field === 'dob_day' || field === 'dob_month' || field === 'dob_year') {
+        return { ...prev, [field]: value }
+      }
+      
+      // Handle regular fields
+      return { ...prev, [field]: value }
+    })
   }
 
   const renderLandingPage = () => (
@@ -396,7 +489,7 @@ export default function TraumaVoiceForm() {
 
         {/* Live Form Section */}
         <div className="w-96 flex-shrink-0 p-4 border-l border-slate-200 bg-white/30 backdrop-blur-sm flex flex-col">
-          <FormDisplay formData={formData} />
+          <DynamicForm sectionName="your-details" formData={formData} />
         </div>
       </div>
     </div>
@@ -416,7 +509,7 @@ export default function TraumaVoiceForm() {
         </div>
 
         <div className="w-full flex justify-center mb-8">
-          <FormDisplay formData={formData} isEditable={true} onUpdate={handleFormUpdate} />
+          <DynamicForm sectionName="your-details" formData={formData} isEditable={true} onUpdate={handleFormUpdate} />
         </div>
 
         <div className="flex justify-center gap-4">
