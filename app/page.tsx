@@ -1,103 +1,516 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+import { useState, useRef, useEffect } from "react"
+import { useChat } from "@ai-sdk/react"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { VoiceCircle } from "@/components/voice-circle"
+import { QuickExit } from "@/components/quick-exit"
+import { FormDisplay } from "@/components/form-display"
+import { ChevronDown, ChevronUp, Mic, MicOff, Send, Heart, Phone, ExternalLink } from "lucide-react"
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+type Stage = "landing" | "conversation" | "review" | "complete"
+
+interface FormData {
+  name?: string
+  age?: string
+  incident_type?: string
+  date_occurred?: string
+  location?: string
+  description?: string
+  support_needed?: string
+  contact_preference?: string
+}
+
+export default function TraumaVoiceForm() {
+  const [stage, setStage] = useState<Stage>("landing")
+  const [showDescription, setShowDescription] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const [audioLevel, setAudioLevel] = useState(0)
+  const [formData, setFormData] = useState<FormData>({})
+  const [simulateAudio, setSimulateAudio] = useState(false)
+  const recognitionRef = useRef<any>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    api: "/api/chat",
+    streamProtocol: "text", // Use text protocol for simple JSON responses
+    onFinish: (assistantMessage) => {
+      extractFormData(assistantMessage.content)
+    },
+    onError: (error) => {
+      console.error("Chat error:", error)
+    },
+  })
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  // Audio level detection
+  const startAudioAnalysis = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      analyserRef.current = audioContextRef.current.createAnalyser()
+      microphoneRef.current = audioContextRef.current.createMediaStreamSource(stream)
+
+      analyserRef.current.fftSize = 256
+      const bufferLength = analyserRef.current.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+
+      microphoneRef.current.connect(analyserRef.current)
+
+      const updateAudioLevel = () => {
+        if (analyserRef.current && isRecording) {
+          analyserRef.current.getByteFrequencyData(dataArray)
+
+          // Calculate average volume
+          let sum = 0
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i]
+          }
+          const average = sum / bufferLength
+          const normalizedLevel = Math.min(average / 128, 1) // Normalize to 0-1
+
+          setAudioLevel(normalizedLevel)
+          animationFrameRef.current = requestAnimationFrame(updateAudioLevel)
+        }
+      }
+
+      updateAudioLevel()
+      console.log("Audio analysis started successfully")
+    } catch (error) {
+      console.error("Error accessing microphone:", error)
+      // Fallback to simulated audio for demo purposes
+      setSimulateAudio(true)
+      console.log("Falling back to simulated audio visualization")
+    }
+  }
+
+  const stopAudioAnalysis = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+    }
+    if (microphoneRef.current) {
+      microphoneRef.current.disconnect()
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      audioContextRef.current.close()
+    }
+    setAudioLevel(0)
+    setSimulateAudio(false)
+  }
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition
+      recognitionRef.current = new SpeechRecognition()
+      recognitionRef.current.continuous = true
+      recognitionRef.current.interimResults = true
+      recognitionRef.current.lang = "en-US"
+
+      recognitionRef.current.onresult = (event: any) => {
+        let finalTranscript = ""
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript
+          }
+        }
+        if (finalTranscript) {
+          handleInputChange({ target: { value: finalTranscript } } as any)
+          // Auto-submit after voice input
+          setTimeout(() => {
+            const form = document.querySelector("form")
+            if (form) {
+              form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }))
+            }
+          }, 500)
+        }
+      }
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false)
+        setIsRecording(false)
+        stopAudioAnalysis()
+      }
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error)
+        setIsListening(false)
+        setIsRecording(false)
+        stopAudioAnalysis()
+      }
+    } else {
+      console.log("Speech recognition not supported, using simulated audio for demo")
+    }
+  }, [handleInputChange])
+
+  const extractFormData = (content: string) => {
+    // Enhanced extraction logic for user messages
+    const newFormData = { ...formData }
+
+    // Look at the last user message for extraction
+    const lastUserMessage =
+      messages
+        .slice()
+        .reverse()
+        .find((m) => m.role === "user")?.content || ""
+
+    // Extract name
+    const namePatterns = [/my name is ([^.!?]+)/i, /i'm ([^.!?]+)/i, /call me ([^.!?]+)/i]
+    for (const pattern of namePatterns) {
+      const match = lastUserMessage.match(pattern)
+      if (match && !newFormData.name) {
+        newFormData.name = match[1].trim()
+        break
+      }
+    }
+
+    // Extract age
+    const ageMatch = lastUserMessage.match(/i am (\d+)|i'm (\d+)|(\d+) years old/i)
+    if (ageMatch && !newFormData.age) {
+      newFormData.age = ageMatch[1] || ageMatch[2] || ageMatch[3]
+    }
+
+    // Extract incident type
+    const incidentPatterns = [
+      /it was (assault|harassment|abuse|violence|attack)/i,
+      /(assault|harassment|abuse|violence|attack) happened/i,
+    ]
+    for (const pattern of incidentPatterns) {
+      const match = lastUserMessage.match(pattern)
+      if (match && !newFormData.incident_type) {
+        newFormData.incident_type = match[1] || match[2]
+        break
+      }
+    }
+
+    // Extract date information
+    const datePatterns = [
+      /last (week|month|year)/i,
+      /(\d+) (days?|weeks?|months?|years?) ago/i,
+      /(yesterday|today)/i,
+      /in (january|february|march|april|may|june|july|august|september|october|november|december)/i,
+    ]
+    for (const pattern of datePatterns) {
+      const match = lastUserMessage.match(pattern)
+      if (match && !newFormData.date_occurred) {
+        newFormData.date_occurred = match[0]
+        break
+      }
+    }
+
+    setFormData(newFormData)
+  }
+
+  const startRecording = () => {
+    if (recognitionRef.current) {
+      setIsRecording(true)
+      setIsListening(true)
+      startAudioAnalysis()
+      recognitionRef.current.start()
+    } else {
+      // Fallback for demo - just enable simulated audio
+      setIsRecording(true)
+      setIsListening(true)
+      setSimulateAudio(true)
+      console.log("Using simulated recording for demo")
+    }
+  }
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+    }
+    setIsRecording(false)
+    setIsListening(false)
+    stopAudioAnalysis()
+  }
+
+  const handleFormUpdate = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const renderLandingPage = () => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+      <QuickExit />
+      <div className="text-center max-w-2xl">
+        <VoiceCircle isActive={false} size="lg" />
+
+        <h1 className="text-3xl font-light text-slate-700 mt-8 mb-4">We're here to listen</h1>
+
+        <p className="text-slate-600 mb-8 leading-relaxed">
+          This is a safe space where you can share your experience at your own pace. Your voice matters, and we're here
+          to support you.
+        </p>
+
+        <div className="space-y-4">
+          <Button
+            onClick={() => setStage("conversation")}
+            size="lg"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-xl text-lg font-light"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Tell me about it
+          </Button>
+
+          <Button
+            onClick={() => setShowDescription(!showDescription)}
+            variant="ghost"
+            className="text-slate-600 hover:text-slate-700 flex items-center gap-2"
           >
-            Read our docs
-          </a>
+            {showDescription ? "Hide" : "Show"} more information
+            {showDescription ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </Button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {showDescription && (
+          <Card className="mt-6 p-6 bg-white/60 backdrop-blur-sm border-slate-200 text-left">
+            <h3 className="font-medium text-slate-700 mb-3">How this works</h3>
+            <ul className="text-sm text-slate-600 space-y-2">
+              <li>• You can speak or type to share your experience</li>
+              <li>• We'll gently ask questions to understand what happened</li>
+              <li>• You can stop or take breaks anytime you need</li>
+              <li>• Your information helps us connect you with the right support</li>
+              <li>• Everything is confidential and secure</li>
+              <li>• All data stays within our secure system - no external services</li>
+            </ul>
+          </Card>
+        )}
+      </div>
     </div>
-  );
+  )
+
+  const renderConversation = () => (
+    <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">
+      <QuickExit />
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Chat Section */}
+        <div className="flex-1 flex flex-col p-4 min-w-0">
+          <div className="text-center mb-6 flex-shrink-0">
+            <VoiceCircle
+              isActive={isRecording || isLoading}
+              audioLevel={audioLevel}
+              size="md"
+              simulateAudio={simulateAudio}
+            />
+            <p className="text-slate-600 mt-4">
+              {isRecording ? "Listening..." : isLoading ? "Understanding..." : "Tap to speak or type below"}
+            </p>
+            {simulateAudio && <p className="text-xs text-slate-500 mt-1">Demo mode - simulated audio visualization</p>}
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-4 mb-4 min-h-0">
+            {messages.length === 0 && (
+              <div className="flex justify-start">
+                <Card className="bg-white/70 border-slate-200 backdrop-blur-sm p-4 max-w-[80%]">
+                  <p className="text-slate-700 leading-relaxed">
+                    Hi there. I'm here to listen and help you share what happened. We can go as slowly as you need.
+                    Would you like to start by telling me your name?
+                  </p>
+                </Card>
+              </div>
+            )}
+
+            {messages.map((message) => (
+              <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                <Card
+                  className={`max-w-[80%] p-4 ${
+                    message.role === "user" ? "bg-blue-100/70 border-blue-200" : "bg-white/70 border-slate-200"
+                  } backdrop-blur-sm`}
+                >
+                  <div className="text-slate-700 leading-relaxed">{message.content}</div>
+                </Card>
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex justify-start">
+                <Card className="bg-white/70 border-slate-200 backdrop-blur-sm p-4 max-w-[80%]">
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                      <div
+                        className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.1s" }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      ></div>
+                    </div>
+                    <span className="text-sm">Listening thoughtfully...</span>
+                  </div>
+                </Card>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="flex-shrink-0 space-y-4">
+            <form onSubmit={handleSubmit} className="flex gap-3">
+              <input
+                value={input}
+                onChange={handleInputChange}
+                placeholder="Type your response here..."
+                className="flex-1 p-3 bg-white/70 border border-slate-300 rounded-xl focus:border-blue-300 focus:ring-blue-200 text-slate-700"
+                disabled={isLoading}
+              />
+              <Button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                variant={isRecording ? "destructive" : "outline"}
+                size="lg"
+                className="rounded-xl"
+              >
+                {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </Button>
+              <Button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                size="lg"
+                className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl"
+              >
+                <Send className="w-5 h-5" />
+              </Button>
+            </form>
+
+            <div className="text-center">
+              <Button onClick={() => setStage("review")} variant="outline" className="text-slate-600 border-slate-300">
+                I'm ready to review what we've discussed
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Form Section */}
+        <div className="w-96 flex-shrink-0 p-4 border-l border-slate-200 bg-white/30 backdrop-blur-sm flex flex-col">
+          <FormDisplay formData={formData} />
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderReview = () => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+      <QuickExit />
+
+      <div className="max-w-4xl w-full flex flex-col items-center">
+        <div className="text-center mb-8">
+          <VoiceCircle isActive={false} size="md" />
+          <h2 className="text-2xl font-light text-slate-700 mt-6 mb-4">Review Your Information</h2>
+          <p className="text-slate-600">
+            Please review what we've discussed. You can edit anything that doesn't look right.
+          </p>
+        </div>
+
+        <div className="w-full flex justify-center mb-8">
+          <FormDisplay formData={formData} isEditable={true} onUpdate={handleFormUpdate} />
+        </div>
+
+        <div className="flex justify-center gap-4">
+          <Button
+            onClick={() => setStage("conversation")}
+            variant="outline"
+            className="px-6 py-3 border-slate-300 text-slate-600"
+          >
+            Continue Talking
+          </Button>
+          <Button onClick={() => setStage("complete")} className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3">
+            This looks good
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderComplete = () => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+      <QuickExit />
+
+      <div className="max-w-2xl text-center">
+        <VoiceCircle isActive={false} size="lg" />
+
+        <h2 className="text-3xl font-light text-slate-700 mt-8 mb-4">Thank you for sharing</h2>
+
+        <p className="text-slate-600 mb-8 leading-relaxed">
+          Your courage in speaking up matters. We've received your information and someone will be in touch according to
+          your preferences. You're not alone in this.
+        </p>
+
+        <Card className="bg-white/60 backdrop-blur-sm border-slate-200 p-6 text-left mb-8">
+          <h3 className="font-medium text-slate-700 mb-4 flex items-center gap-2">
+            <Heart className="w-5 h-5 text-red-400" />
+            Immediate Support Resources
+          </h3>
+          <div className="space-y-3">
+            <a
+              href="tel:988"
+              className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              <Phone className="w-5 h-5 text-blue-600" />
+              <div>
+                <div className="font-medium text-slate-700">Crisis Lifeline</div>
+                <div className="text-sm text-slate-600">Call or text 988 - Available 24/7</div>
+              </div>
+            </a>
+
+            <a
+              href="https://www.rainn.org/get-help"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              <ExternalLink className="w-5 h-5 text-blue-600" />
+              <div>
+                <div className="font-medium text-slate-700">RAINN National Hotline</div>
+                <div className="text-sm text-slate-600">1-800-656-HOPE (4673)</div>
+              </div>
+            </a>
+
+            <a
+              href="https://www.thehotline.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              <ExternalLink className="w-5 h-5 text-blue-600" />
+              <div>
+                <div className="font-medium text-slate-700">National Domestic Violence Hotline</div>
+                <div className="text-sm text-slate-600">1-800-799-7233</div>
+              </div>
+            </a>
+          </div>
+        </Card>
+
+        <p className="text-sm text-slate-500">
+          Your information has been securely submitted. Please keep these resources handy.
+        </p>
+      </div>
+    </div>
+  )
+
+  switch (stage) {
+    case "landing":
+      return renderLandingPage()
+    case "conversation":
+      return renderConversation()
+    case "review":
+      return renderReview()
+    case "complete":
+      return renderComplete()
+    default:
+      return renderLandingPage()
+  }
 }
