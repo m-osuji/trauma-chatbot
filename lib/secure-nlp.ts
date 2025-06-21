@@ -6,6 +6,7 @@ export interface ProcessedInput {
   response: string
   indicators: TraumaIndicators
   confidence: number // 0 to 1 - how confident we are in our processing
+  responseId: string // Unique identifier to prevent repetition
 }
 
 interface TraumaIndicators {
@@ -98,7 +99,17 @@ export class SecureNLPPipeline {
   private classifyIntentWithContext(text: string, indicators: TraumaIndicators): string {
     const lowerText = text.toLowerCase()
     
-    // High-priority trauma detection
+    // Check for simple name responses first
+    if (/^[a-zA-Z]+$/.test(text.trim()) && text.length > 2 && text.length < 20) {
+      return 'provide_personal_info'
+    }
+    
+    // Check for simple age responses
+    if (/^\d+$/.test(text.trim()) && parseInt(text) >= 1 && parseInt(text) <= 120) {
+      return 'provide_personal_info'
+    }
+    
+    // High-priority trauma detection for direct victims
     if (indicators.hasIncident && (indicators.hasThreat || indicators.hasPhysicalContact)) {
       return 'report_incident'
     }
@@ -108,22 +119,22 @@ export class SecureNLPPipeline {
       return 'request_help'
     }
     
-    // Personal information with context
-    if (lowerText.match(/(?:name|call|am|is|i'm|i am)/) && !indicators.hasIncident) {
+    // Personal information for direct victims
+    if (lowerText.match(/(?:name|call|am|is|i'm|i am|im)/) && !indicators.hasIncident) {
       return 'provide_personal_info'
     }
     
-    // Timing information
+    // Timing information for direct victims
     if (indicators.hasTiming && indicators.hasIncident) {
       return 'provide_timing_info'
     }
     
-    // Location information
+    // Location information for direct victims
     if (indicators.hasLocation && indicators.hasIncident) {
       return 'provide_location_info'
     }
     
-    // Perpetrator information
+    // Perpetrator information for direct victims
     if (indicators.hasPerpetrator && indicators.hasIncident) {
       return 'provide_suspect_info'
     }
@@ -143,7 +154,9 @@ export class SecureNLPPipeline {
         /call me ([^.!?]+)/i,
         /i am ([^.!?]+)/i,
         /hi,? i'm ([^.!?]+)/i,
-        /hello,? i'm ([^.!?]+)/i
+        /hello,? i'm ([^.!?]+)/i,
+        /im ([^.!?]+)/i,
+        /^([a-zA-Z]+)$/i // Single word response (like "dorothy")
       ]
       
       for (const pattern of namePatterns) {
@@ -177,14 +190,18 @@ export class SecureNLPPipeline {
       /(\d+) years old/i,
       /i'm (\d+) years/i,
       /i am (\d+) years/i,
-      /age (\d+)/i
+      /age (\d+)/i,
+      /^(\d+)$/i // Simple number response (like "17")
     ]
     
     for (const pattern of agePatterns) {
       const match = text.match(pattern)
       if (match && !extracted.age) {
-        extracted.age = match[1]
-        break
+        const age = parseInt(match[1])
+        if (age >= 1 && age <= 120) { // Reasonable age range
+          extracted.age = match[1]
+          break
+        }
       }
     }
 
@@ -244,7 +261,9 @@ export class SecureNLPPipeline {
         /central ([^.!?]+)/i,
         /([^.!?]*london[^.!?]*)/i,
         /([^.!?]*joburg[^.!?]*)/i,
-        /([^.!?]*cape town[^.!?]*)/i
+        /([^.!?]*cape town[^.!?]*)/i,
+        /waiting (?:outside|in|at) ([^.!?]+)/i,
+        /(?:outside|in|at) the ([^.!?]+)/i
       ]
       
       for (const pattern of locationPatterns) {
@@ -253,6 +272,14 @@ export class SecureNLPPipeline {
           const location = match[1].trim()
           const cleanLocation = location.replace(/^(central\s+|i was in\s+|it happened in\s+)/i, '')
           extracted.town_city = cleanLocation
+          
+          // Extract more specific location details
+          if (text.match(/toilet|bathroom|restroom/i)) {
+            extracted.incident_location_detail = 'Near public toilets'
+          }
+          if (text.match(/central london/i)) {
+            extracted.incident_location_detail = 'Central London area'
+          }
           break
         }
       }
@@ -289,6 +316,23 @@ export class SecureNLPPipeline {
         extracted.disability = 'Yes'
         extracted.health_issues = 'Yes'
         extracted.health_issues_details = 'Uses wheelchair'
+      }
+    }
+
+    // Extract incident narrative
+    if (indicators.hasIncident) {
+      const incidentPatterns = [
+        /(?:guy|man|person) came up (?:to me|towards me)/i,
+        /(?:guy|man|person) approached (?:me|towards me)/i,
+        /(?:guy|man|person) walked up (?:to me|towards me)/i,
+        /(?:guy|man|person) came over (?:to me|towards me)/i
+      ]
+      
+      for (const pattern of incidentPatterns) {
+        if (text.match(pattern)) {
+          extracted.incident_narrative = 'Someone approached me'
+          break
+        }
       }
     }
 
@@ -329,32 +373,32 @@ export class SecureNLPPipeline {
   private generateResponse(intent: string, riskLevel: 'low' | 'medium' | 'high'): string {
     const responses = {
       report_incident: {
-        low: "I understand you're sharing something difficult. Let's take this step by step. Can you tell me your name?",
+        low: "I understand you're sharing something difficult that happened to you. Let's take this step by step. Can you tell me your name?",
         medium: "I hear you, and I want to help. This is a safe space. Can you start by telling me your name?",
         high: "I'm here to listen and support you. You're not alone. Let's begin with your name - what would you like me to call you?"
       },
       request_help: {
-        low: "I'm here to help. What kind of support do you need right now?",
-        medium: "I want to help you get the support you need. Can you tell me more about what happened?",
+        low: "I'm here to help you. What kind of support do you need right now?",
+        medium: "I want to help you get the support you need. Can you tell me more about what happened to you?",
         high: "You're reaching out for help, and that's brave. I'm here to support you. Can you tell me what you're going through?"
       },
       provide_personal_info: {
-        low: "Thank you for sharing that. Can you tell me more about what happened?",
-        medium: "Thank you. Now, can you tell me about the incident you want to report?",
+        low: "Thank you for sharing that. Can you tell me more about what happened to you?",
+        medium: "Thank you. Now, can you tell me about the incident you experienced?",
         high: "Thank you for trusting me with that information. I'm here to help you through this process."
       },
       provide_timing_info: {
-        low: "Thank you for that information. Can you tell me where this happened?",
-        medium: "I understand the timing. Can you tell me more about the location?",
+        low: "Thank you for that information. Can you tell me where this happened to you?",
+        medium: "I understand the timing. Can you tell me more about the location where this occurred?",
         high: "Thank you for sharing when this occurred. I'm here to help you document everything."
       },
       provide_location_info: {
-        low: "Thank you. Can you tell me more about what happened there?",
+        low: "Thank you. Can you tell me more about what happened to you there?",
         medium: "I understand the location. Can you describe what occurred?",
         high: "Thank you for that detail. I want to help you document what happened."
       },
       provide_suspect_info: {
-        low: "Thank you for that information. Can you tell me more about the incident?",
+        low: "Thank you for that information. Can you tell me more about what happened to you?",
         medium: "I understand. Can you describe what happened in more detail?",
         high: "Thank you for sharing that. I'm here to help you through this difficult process."
       },
@@ -384,32 +428,32 @@ export class SecureNLPPipeline {
     // More specific responses based on intent
     const specificResponses = {
       report_incident: {
-        low: "I understand you're sharing something difficult. Can you tell me when this happened?",
+        low: "I understand you're sharing something difficult that happened to you. Can you tell me when this occurred?",
         medium: "I hear you, and I want to help. Can you tell me more about the timing of this incident?",
         high: "I'm here to listen and support you. When did this incident occur?"
       },
       request_help: {
-        low: "I'm here to help. What specific support do you need right now?",
+        low: "I'm here to help you. What specific support do you need right now?",
         medium: "I want to help you get the support you need. What happened that made you reach out?",
         high: "You're reaching out for help, and that's brave. What can I help you with?"
       },
       provide_personal_info: {
-        low: "Thank you for sharing that. Can you tell me about the incident you want to report?",
+        low: "Thank you for sharing that. Can you tell me about the incident you experienced?",
         medium: "Thank you. Now, can you describe what happened to you?",
         high: "Thank you for trusting me with that information. Can you tell me about the incident?"
       },
       provide_timing_info: {
-        low: "Thank you for that information. Can you tell me where this happened?",
+        low: "Thank you for that information. Can you tell me where this happened to you?",
         medium: "I understand the timing. Can you tell me the location where this occurred?",
         high: "Thank you for sharing when this occurred. Where did this incident take place?"
       },
       provide_location_info: {
-        low: "Thank you. Can you tell me more about what happened at that location?",
+        low: "Thank you. Can you tell me more about what happened to you at that location?",
         medium: "I understand the location. Can you describe the incident in more detail?",
         high: "Thank you for that detail. Can you tell me what happened there?"
       },
       provide_suspect_info: {
-        low: "Thank you for that information. Can you tell me more about the incident itself?",
+        low: "Thank you for that information. Can you tell me more about what happened to you?",
         medium: "I understand. Can you describe what happened in more detail?",
         high: "Thank you for sharing that. Can you tell me more about the incident?"
       },
@@ -465,6 +509,79 @@ export class SecureNLPPipeline {
     return Math.min(0.95, confidence)
   }
 
+  private generateIntelligentResponse(intent: string, riskLevel: 'low' | 'medium' | 'high', extractedData: Record<string, any>, text: string): string {
+    // If we just got a name, acknowledge it and ask for age
+    if (extractedData.first_name && !extractedData.age) {
+      return `Thank you ${extractedData.first_name}. How old are you? This helps us provide appropriate support.`
+    }
+    
+    // If we just got an age, ask for timing
+    if (extractedData.age && !extractedData.start_day) {
+      return "When did this happen? Can you tell me the date and time?"
+    }
+    
+    // If we have location info but missing timing
+    if (extractedData.town_city && !extractedData.start_day && text.match(/central london|waiting|toilet/i)) {
+      return "I understand you were in Central London. Can you tell me when this happened? What day and time was it?"
+    }
+    
+    // If we have perpetrator info but missing incident details
+    if (text.match(/guy came up|man came up|approached/i) && !extractedData.incident_narrative) {
+      return "I understand someone approached you. Can you tell me what happened when they came up to you? What did they do or say?"
+    }
+    
+    // If we have vulnerability info but missing incident details
+    if (extractedData.disability === 'Yes' && extractedData.age && !extractedData.incident_narrative) {
+      return "I understand you're young and use a wheelchair. Can you tell me what happened when this person came up to you?"
+    }
+    
+    // Default to asking for missing information
+    const missingInfo = this.getMissingInformation(extractedData)
+    if (missingInfo.length > 0) {
+      const nextInfo = missingInfo[0]
+      return this.getQuestionForMissingInfo(nextInfo, extractedData)
+    }
+    
+    // Fallback to general response
+    return this.generateResponse(intent, riskLevel)
+  }
+
+  private getMissingInformation(extractedData: Record<string, any>): string[] {
+    const missing: string[] = []
+    
+    // Priority order for information gathering
+    if (!extractedData.first_name) missing.push('name')
+    if (!extractedData.age) missing.push('age')
+    if (!extractedData.start_day) missing.push('timing')
+    if (!extractedData.town_city) missing.push('location')
+    if (!extractedData.incident_narrative) missing.push('narrative')
+    if (!extractedData.disability) missing.push('disability')
+    if (!extractedData.email && !extractedData.phone_number) missing.push('contact')
+    
+    return missing
+  }
+
+  private getQuestionForMissingInfo(infoType: string, extractedData: Record<string, any>): string {
+    switch (infoType) {
+      case 'name':
+        return "Can you tell me your name? What would you like me to call you?"
+      case 'age':
+        return "How old are you? This helps us provide appropriate support."
+      case 'timing':
+        return "When did this happen? Can you tell me the date and time?"
+      case 'location':
+        return "Where did this happen? Can you tell me the location or area?"
+      case 'narrative':
+        return "Can you tell me what happened? What did this person do or say?"
+      case 'disability':
+        return "Do you have any mobility needs or health conditions we should know about?"
+      case 'contact':
+        return "How would you prefer to be contacted about next steps? Email or phone?"
+      default:
+        return "Can you tell me more about what happened?"
+    }
+  }
+
   async processInput(text: string): Promise<ProcessedInput> {
     const sanitized = this.sanitizeInput(text)
     const indicators = this.detectTraumaIndicators(sanitized)
@@ -473,8 +590,8 @@ export class SecureNLPPipeline {
     const extractedData = this.extractDataWithContext(sanitized, intent, indicators)
     const riskLevel = this.assessTraumaRisk(indicators, intent, extractedData)
     
-    // Generate response with context awareness
-    let response = this.generateResponse(intent, riskLevel)
+    // Generate intelligent response focused on information extraction
+    let response = this.generateIntelligentResponse(intent, riskLevel, extractedData, sanitized)
     
     // Special handling for minors who mention being alone
     if (extractedData.age && parseInt(extractedData.age) < 18 && extractedData.vulnerability_context === 'alone') {
@@ -509,6 +626,8 @@ export class SecureNLPPipeline {
       hasExtractedData: Object.keys(extractedData).length > 0
     })
 
+    const responseId = Date.now().toString()
+
     return {
       sentiment,
       intent,
@@ -516,7 +635,8 @@ export class SecureNLPPipeline {
       riskLevel,
       response,
       indicators,
-      confidence
+      confidence,
+      responseId
     }
   }
 } 

@@ -17,7 +17,6 @@ type Stage = "landing" | "conversation" | "form" | "review" | "complete"
 const FORM_SECTIONS = [
   "your-details",
   "victim-role", 
-  "your-role",
   "incident-details",
   "evidence",
   "witness-details",
@@ -58,41 +57,6 @@ interface FormData {
   pre_contact?: string
   alt_action_if_no_website?: string
   pre_contact_other_details?: string
-  
-  // Your role (your-role.json)
-  involvement?: string
-  victim_title?: string
-  victim_first_name?: string
-  victim_surname?: string
-  victim_age?: string
-  victim_sex?: string
-  victim_email?: string
-  victim_phone?: string
-  victim_address_lookup?: string
-  victim_building_name?: string
-  victim_building_number?: string
-  victim_street?: string
-  victim_town_city?: string
-  victim_postcode?: string
-  victim_description?: string
-  victim_connection_explain?: string
-  victim_under18?: string
-  victim_other_crimes12m?: string
-  victim_health_issues?: string
-  victim_contact_support?: string
-  victim_disability?: string
-  victim_ethnicity?: string
-  business_name?: string
-  business_email?: string
-  business_phone?: string
-  business_address_lookup?: string
-  business_building_name?: string
-  business_building_number?: string
-  business_street?: string
-  business_town_city?: string
-  business_postcode?: string
-  business_description?: string
-  business_connection_explain?: string
   
   // Incident details (incident-details.json)
   already_reported?: string
@@ -430,7 +394,7 @@ export default function TraumaVoiceForm() {
 
         <p className="text-slate-600 mb-8 leading-relaxed">
           This is a safe space where you can share your experience at your own pace. Your voice matters, and we're here
-          to support you.
+          to support you through the reporting process.
         </p>
 
         <div className="space-y-4">
@@ -457,7 +421,7 @@ export default function TraumaVoiceForm() {
             <h3 className="font-medium text-slate-700 mb-3">How this works</h3>
             <ul className="text-sm text-slate-600 space-y-2">
               <li>• You can speak or type to share your experience</li>
-              <li>• We'll gently ask questions to understand what happened</li>
+              <li>• We'll gently ask questions to understand what happened to you</li>
               <li>• You can stop or take breaks anytime you need</li>
               <li>• Your information helps us connect you with the right support</li>
               <li>• Everything is confidential and secure</li>

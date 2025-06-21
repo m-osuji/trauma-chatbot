@@ -9,6 +9,9 @@ export const maxDuration = 30
 // - No LLM integration to prevent data exposure
 // - All trauma-sensitive content stays within the user's device
 
+// Simple response tracking to prevent repetition
+let lastResponse = ''
+
 export async function POST(req: NextRequest) {
   try {
     const { messages } = await req.json()
@@ -33,12 +36,22 @@ export async function POST(req: NextRequest) {
     const nlpPipeline = SecureNLPPipeline.getInstance()
     const processed = await nlpPipeline.processInput(lastUserMessage)
     
+    // Generate response
+    let response = processed.response
+    
+    // Simple repetition prevention
+    if (response === lastResponse) {
+      response = generateAlternativeResponse(processed.intent, processed.riskLevel)
+    }
+    
+    lastResponse = response
+    
     // Log confidence for debugging but never expose user data
     console.log(`Processing confidence: ${processed.confidence.toFixed(2)}`)
     
     // Return the secure NLP response
     return new Response(
-      processed.response,
+      response,
       {
         headers: { "Content-Type": "text/plain" },
       }
@@ -53,4 +66,28 @@ export async function POST(req: NextRequest) {
       }
     )
   }
+}
+
+// Generate alternative responses to prevent repetition
+function generateAlternativeResponse(intent: string, riskLevel: string): string {
+  const alternatives = {
+    'provide_personal_info': [
+      "Thank you for sharing that with me. Can you tell me more about what happened?",
+      "I appreciate you sharing that. What occurred that made you reach out?",
+      "Thank you for trusting me with that. Can you describe what happened?"
+    ],
+    'report_incident': [
+      "I understand this is difficult to share. Can you tell me when this happened?",
+      "I hear you, and I want to help. When did this incident occur?",
+      "Thank you for being brave enough to share this. When did it happen?"
+    ],
+    'general_conversation': [
+      "I'm here to listen. What would you like to tell me?",
+      "I'm here to support you. What's on your mind?",
+      "I'm here for you. What would you like to discuss?"
+    ]
+  }
+  
+  const intentAlternatives = alternatives[intent as keyof typeof alternatives] || alternatives.general_conversation
+  return intentAlternatives[Math.floor(Math.random() * intentAlternatives.length)]
 }
