@@ -1,4 +1,3 @@
- 
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -29,10 +28,10 @@ interface FormDefinition {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { section: string } }
+  { params }: { params: Promise<{ section: string }> }
 ) {
   try {
-    const { section } = params;
+    const { section } = await params;
     
     // Validate section parameter
     if (!section || typeof section !== 'string') {
@@ -81,10 +80,10 @@ export async function GET(
 // Optional: Add POST method for form validation
 export async function POST(
   request: NextRequest,
-  { params }: { params: { section: string } }
+  { params }: { params: Promise<{ section: string }> }
 ) {
   try {
-    const { section } = params;
+    const { section } = await params;
     const body = await request.json();
 
     // Basic validation - you can expand this

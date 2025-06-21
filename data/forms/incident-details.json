@@ -1,0 +1,115 @@
+{
+  "section": "Incident details",
+  "questions": [
+    {
+      "id": "already_reported",
+      "label": "Has anyone reported this already?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No", "I don't know" ]
+    },
+    {
+      "id": "reference_number",
+      "label": "If you have a reference number, please enter it below",
+      "type": "text",
+      "required": false,
+      "depends_on": { "id": "already_reported", "value": "Yes" }
+    },
+    {
+      "id": "start_date",
+      "label": "Start date",
+      "type": "date-triple",
+      "required": true,
+      "parts": [
+        { "sub_id": "start_day", "placeholder": "Day" },
+        { "sub_id": "start_month", "placeholder": "Month" },
+        { "sub_id": "start_year", "placeholder": "Year" }
+      ]
+    },
+    {
+      "id": "end_date",
+      "label": "End date",
+      "type": "date-triple",
+      "required": true,
+      "parts": [
+        { "sub_id": "end_day", "placeholder": "Day" },
+        { "sub_id": "end_month", "placeholder": "Month" },
+        { "sub_id": "end_year", "placeholder": "Year" }
+      ]
+    },
+    {
+      "id": "start_time",
+      "label": "Start time",
+      "type": "time-pair",
+      "required": true,
+      "parts": [
+        { "sub_id": "start_hour", "placeholder": "HH" },
+        { "sub_id": "start_minute", "placeholder": "MM" }
+      ]
+    },
+    {
+      "id": "end_time",
+      "label": "End time",
+      "type": "time-pair",
+      "required": true,
+      "parts": [
+        { "sub_id": "end_hour", "placeholder": "HH" },
+        { "sub_id": "end_minute", "placeholder": "MM" }
+      ]
+    },
+    {
+      "id": "approx_time_note",
+      "label": "If you're unsure about the date or time, please give a few details below",
+      "type": "text",
+      "required": false
+    },
+    {
+      "id": "incident_address_display",
+      "label": "Incident address (read-only map field)",
+      "type": "display",
+      "required": false,
+      "use": false,
+      "comment": "This field shows the earlier address; leave unchanged."
+    },
+    {
+      "id": "incident_location_detail",
+      "label": "Can you tell us anything else to help pinpoint the exact location?",
+      "type": "textarea",
+      "required": false
+    },
+    {
+      "id": "public_transport",
+      "label": "At any point, were you on public transport?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "transport_card_details",
+      "label": "Please tell us the number of the contactless payment card or Oyster card you used so that we can trace your journey and check for CCTV footage.",
+      "type": "textarea",
+      "required": false,
+      "depends_on": { "id": "public_transport", "value": "Yes" }
+    },
+    {
+      "id": "incident_narrative",
+      "label": "Please tell us what happened, and the events leading up to it, to help us identify if an offence has been committed.",
+      "type": "textarea",
+      "required": true
+    },
+    {
+      "id": "bias_factor",
+      "label": "Do you feel race, ethnicity, sex, gender, sexuality, disability or religion were a factor in this crime?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "bias_factor_explain",
+      "label": "Please tell us why you feel race, ethnicity, sex, gender, sexuality, disability or religion were a factor in this crime",
+      "type": "textarea",
+      "required": true,
+      "depends_on": { "id": "bias_factor", "value": "Yes" }
+    }
+  ]
+} 

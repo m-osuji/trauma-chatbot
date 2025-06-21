@@ -1,0 +1,148 @@
+{
+  "section": "Your role (victim path)",
+  "defaults": {
+    "involvement": "victim"
+  },
+  "questions": [
+    {
+      "id": "under18",
+      "label": "Are you under 18 years of age?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "guardian_title",
+      "label": "Parent / guardian title",
+      "type": "text",
+      "required": false,
+      "depends_on": { "id": "under18", "value": "Yes" }
+    },
+    {
+      "id": "guardian_first_name",
+      "label": "Parent / guardian first name",
+      "type": "text",
+      "required": false,
+      "depends_on": { "id": "under18", "value": "Yes" }
+    },
+    {
+      "id": "guardian_surname",
+      "label": "Parent / guardian surname",
+      "type": "text",
+      "required": false,
+      "depends_on": { "id": "under18", "value": "Yes" }
+    },
+    {
+      "id": "guardian_email",
+      "label": "Parent / guardian email address",
+      "type": "email",
+      "required": false,
+      "depends_on": { "id": "under18", "value": "Yes" }
+    },
+    {
+      "id": "other_crimes12m",
+      "label": "Have you experienced any other crimes in the past 12 months?",
+      "type": "radio",
+      "required": false,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "other_crimes_description",
+      "label": "Please describe what happened on these other occasions",
+      "type": "textarea",
+      "required": false,
+      "depends_on": { "id": "other_crimes12m", "value": "Yes" }
+    },
+    {
+      "id": "health_issues",
+      "label": "Do you have any health, mobility or welfare issues that are making this situation more difficult?",
+      "type": "radio",
+      "required": false,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "health_issues_details",
+      "label": "Please provide details",
+      "type": "textarea",
+      "required": false,
+      "depends_on": { "id": "health_issues", "value": "Yes" }
+    },
+    {
+      "id": "victim_support",
+      "label": "Would you like to be contacted by Victim Support?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "disability",
+      "label": "Do you have a disability?",
+      "type": "dropdown",
+      "required": false,
+      "options": [ "Yes", "No", "I'd prefer not to say" ]
+    },
+    {
+      "id": "ethnicity",
+      "label": "Ethnic background",
+      "type": "dropdown",
+      "required": false,
+      "options": [
+        "I don't know",
+        "I'd prefer not to say",
+        "White-British",
+        "White-Irish",
+        "White-Other",
+        "Black-Other",
+        "Black-African",
+        "Black-British",
+        "Black-Asian",
+        "Any other Black background",
+        "Indian",
+        "Pakistani",
+        "Chinese",
+        "Any other Asian background",
+        "Mixed - White & Black Caribbean",
+        "Mixed - White & Black African",
+        "Mixed - White & Asian",
+        "Mixed - any other mixed background",
+        "Greek & Greek Cypriot",
+        "Turkish & Turkish Cypriot"
+      ]
+    },
+    {
+      "id": "pre_contact",
+      "label": "Did you do any of the following before you used the website today?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "I called 101",
+        "I visited a police station",
+        "I spoke to an officer in person",
+        "None of the above; this is the first time I'm contacting you about this",
+        "Other"
+      ]
+    },
+    {
+      "id": "alt_action_if_no_website",
+      "label": "If you hadn't been able to use the website do you think you would have:",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Called 101",
+        "Gone into a police station",
+        "I wouldn't have done anything"
+      ],
+      "depends_on": {
+        "id": "pre_contact",
+        "value": "None of the above; this is the first time I'm contacting you about this"
+      }
+    },
+    {
+      "id": "pre_contact_other_details",
+      "label": "If you contacted us about this by other means then please tell us how",
+      "type": "textarea",
+      "required": true,
+      "depends_on": { "id": "pre_contact", "value": "Other" }
+    }
+  ]
+} 

@@ -1,0 +1,110 @@
+{
+  "section": "Witness details",
+  "questions": [
+    {
+      "id": "has_witnesses",
+      "label": "Did anyone else see what happened?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No", "I don't know" ]
+    },
+    {
+      "id": "witnesses",
+      "label": "Witness list",
+      "type": "repeatable_group",
+      "min": 1,
+      "max": 10,
+      "add_button_label": "Add another witness",
+      "depends_on": { "id": "has_witnesses", "value": "Yes" },
+      "schema": [
+        {
+          "id": "wit_title",
+          "label": "Title",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_first_name",
+          "label": "First name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_surname",
+          "label": "Surname",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_age",
+          "label": "Date of birth or approximate age",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_sex",
+          "label": "Sex",
+          "type": "dropdown",
+          "required": false,
+          "options": [ "Female", "Male", "I'd prefer not to say" ]
+        },
+        {
+          "id": "wit_email",
+          "label": "Email address",
+          "type": "email",
+          "required": false
+        },
+        {
+          "id": "wit_phone",
+          "label": "Phone number",
+          "type": "tel",
+          "required": false
+        },
+        {
+          "id": "wit_address_lookup",
+          "label": "Address (postcode look-up box)",
+          "type": "text",
+          "required": false,
+          "use": false,
+          "comment": "Skip this box; fill manual lines if known."
+        },
+        {
+          "id": "wit_building_name",
+          "label": "Building name",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_building_number",
+          "label": "Building number",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_street",
+          "label": "Street",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_town_city",
+          "label": "Town or city",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_postcode",
+          "label": "Postcode",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "wit_description",
+          "label": "If you don't know the witness, please describe them as best you can",
+          "type": "textarea",
+          "required": false
+        }
+      ]
+    }
+  ]
+} 

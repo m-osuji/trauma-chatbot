@@ -1,0 +1,207 @@
+{
+  "section": "Suspect details",
+  "questions": [
+    {
+      "id": "suspects",
+      "label": "Suspect list",
+      "type": "repeatable_group",
+      "min": 1,
+      "max": 10,
+      "add_button_label": "Add another suspect",
+      "schema": [
+        {
+          "id": "suspect_known",
+          "label": "Do you know this person?",
+          "type": "radio",
+          "required": true,
+          "options": [
+            { "value": "known", "label": "Yes, I know them" },
+            { "value": "describe", "label": "No, but I can describe them" },
+            { "value": "unknown", "label": "No, I don't know anything about them" }
+          ]
+        },
+        {
+          "id": "sus_first_name",
+          "label": "First name",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_surname",
+          "label": "Surname",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_email",
+          "label": "Email address",
+          "type": "email",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_phone",
+          "label": "Phone number",
+          "type": "tel",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_dob_age",
+          "label": "Date of birth or approximate age",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_address_lookup",
+          "label": "Address (postcode look-up box)",
+          "type": "text",
+          "required": false,
+          "use": false,
+          "comment": "Skip this box; use granular lines if known.",
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_building_name",
+          "label": "Building name",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_building_number",
+          "label": "Building number",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_street",
+          "label": "Street",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_town_city",
+          "label": "Town or city",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_postcode",
+          "label": "Postcode",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "known" }
+        },
+        {
+          "id": "sus_approx_age",
+          "label": "Approximate age",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "describe" }
+        },
+        {
+          "id": "sus_approx_height",
+          "label": "Approximate height",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": "describe" }
+        },
+        {
+          "id": "sus_sex",
+          "label": "Sex",
+          "type": "dropdown",
+          "required": false,
+          "options": [ "Female", "Male", "I'd prefer not to say" ],
+          "depends_on": { "id": "suspect_known", "value": ["known","describe"] }
+        },
+        {
+          "id": "sus_ethnicity",
+          "label": "Ethnicity",
+          "type": "dropdown",
+          "required": false,
+          "options": [
+            "I don't know",
+            "I'd prefer not to say",
+            "White-British",
+            "White-Irish",
+            "White-Other",
+            "Black-Other",
+            "Black-African",
+            "Black-British",
+            "Black-Asian",
+            "Any other Black background",
+            "Indian",
+            "Pakistani",
+            "Chinese",
+            "Any other Asian background",
+            "Mixed - White & Black Caribbean",
+            "Mixed - White & Black African",
+            "Mixed - White & Asian",
+            "Mixed - any other mixed background",
+            "Greek & Greek Cypriot",
+            "Turkish & Turkish Cypriot"
+          ],
+          "depends_on": { "id": "suspect_known", "value": ["known","describe"] }
+        },
+        {
+          "id": "sus_description",
+          "label": "Description",
+          "type": "textarea",
+          "required": false,
+          "depends_on": { "id": "suspect_known", "value": ["known","describe"] }
+        },
+        {
+          "id": "sus_in_vehicle",
+          "label": "Were they in a vehicle?",
+          "type": "radio",
+          "required": false,
+          "options": [ "Yes", "No" ],
+          "depends_on": { "id": "suspect_known", "value": ["known","describe"] }
+        },
+        {
+          "id": "sus_vehicle_reg",
+          "label": "Registration number",
+          "type": "text",
+          "required": false,
+          "depends_on": { "id": "sus_in_vehicle", "value": "Yes" }
+        },
+        {
+          "id": "sus_vehicle_desc",
+          "label": "Vehicle description",
+          "type": "textarea",
+          "required": false,
+          "depends_on": { "id": "sus_in_vehicle", "value": "Yes" }
+        },
+        {
+          "id": "sus_connected",
+          "label": "Are they connected to anyone else involved in the incident? (This includes you)",
+          "type": "radio",
+          "required": false,
+          "options": [ "Yes", "No" ],
+          "depends_on": { "id": "suspect_known", "value": ["known","describe"] }
+        },
+        {
+          "id": "sus_connected_who",
+          "label": "Who are they connected to?",
+          "type": "text",
+          "required": true,
+          "depends_on": { "id": "sus_connected", "value": "Yes" }
+        },
+        {
+          "id": "sus_connected_how",
+          "label": "How are they connected?",
+          "type": "text",
+          "required": true,
+          "depends_on": { "id": "sus_connected", "value": "Yes" }
+        }
+      ]
+    }
+  ]
+} 

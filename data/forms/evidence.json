@@ -1,0 +1,54 @@
+{
+  "section": "Evidence",
+  "questions": [
+    {
+      "id": "suspect_left_items",
+      "label": "Has the suspect clearly left something at the scene; such as clothing, blood, any other bodily fluids, discarded items, obvious fingerprints or footprints? Or has the suspect caused any damage or made a mess searching?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "suspect_items_description",
+      "label": "Please describe what was left behind",
+      "type": "textarea",
+      "required": true,
+      "depends_on": { "id": "suspect_left_items", "value": "Yes" }
+    },
+    {
+      "id": "have_personal_media",
+      "label": "Do you have any video, audio or photo evidence?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No" ]
+    },
+    {
+      "id": "third_party_video",
+      "label": "Does another person, business or company have video evidence such as CCTV or mobile phone footage?",
+      "type": "radio",
+      "required": true,
+      "options": [ "Yes", "No", "I don't know" ]
+    },
+    {
+      "id": "third_party_contact",
+      "label": "Please provide details of the person or business so that we can contact them",
+      "type": "textarea",
+      "required": false,
+      "depends_on": { "id": "third_party_video", "value": "Yes" }
+    },
+    {
+      "id": "third_party_content",
+      "label": "Please describe what can be seen in the video, if you know",
+      "type": "textarea",
+      "required": false,
+      "depends_on": { "id": "third_party_video", "value": "Yes" }
+    },
+    {
+      "id": "third_party_appearance",
+      "label": "Please describe your appearance in the footage",
+      "type": "textarea",
+      "required": false,
+      "depends_on": { "id": "third_party_video", "value": "Yes" }
+    }
+  ]
+} 
