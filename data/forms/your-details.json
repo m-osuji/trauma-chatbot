@@ -1,0 +1,95 @@
+{
+  "section": "Your details",
+  "questions": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "text",
+      "required": false
+    },
+    {
+      "id": "first_name",
+      "label": "First name",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "surname",
+      "label": "Surname",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "email",
+      "label": "Email address",
+      "type": "email",
+      "required": true
+    },
+    {
+      "id": "dob",
+      "label": "Date of birth",
+      "type": "date-triple",
+      "required": true,
+      "parts": [
+        { "sub_id": "dob_day", "placeholder": "Day" },
+        { "sub_id": "dob_month", "placeholder": "Month" },
+        { "sub_id": "dob_year", "placeholder": "Year" }
+      ]
+    },
+    {
+      "id": "sex",
+      "label": "Sex",
+      "type": "dropdown",
+      "required": false,
+      "options": [
+        "Female",
+        "Male",
+        "I'd prefer not to say"
+      ]
+    },
+    {
+      "id": "phone_number",
+      "label": "Phone number",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "address_lookup",
+      "label": "Address (postcode look-up box)",
+      "type": "text",
+      "required": true,
+      "use": false,
+      "comment": "Skip this field and fill lines below instead"
+    },
+    {
+      "id": "building_name",
+      "label": "Building name",
+      "type": "text",
+      "required": false
+    },
+    {
+      "id": "building_number",
+      "label": "Building number",
+      "type": "text",
+      "required": false
+    },
+    {
+      "id": "street",
+      "label": "Street",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "town_city",
+      "label": "Town or city",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "postcode",
+      "label": "Postcode",
+      "type": "text",
+      "required": false
+    }
+  ]
+}
