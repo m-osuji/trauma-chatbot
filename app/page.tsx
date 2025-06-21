@@ -7,13 +7,24 @@ import { Card } from "@/components/ui/card"
 import { VoiceCircle } from "@/components/voice-circle"
 import { QuickExit } from "@/components/quick-exit"
 import { DynamicForm } from "@/components/dynamic-form"
-import { ChevronDown, ChevronUp, Mic, MicOff, Send, Heart, Phone, ExternalLink } from "lucide-react"
+import { ChevronDown, ChevronUp, Mic, MicOff, Send, Heart, Phone, ExternalLink, ArrowLeft, ArrowRight } from "lucide-react"
 
-type Stage = "landing" | "conversation" | "review" | "complete"
+type Stage = "landing" | "conversation" | "form" | "review" | "complete"
 
-// Updated to match the JSON structure from your-details.json
+// Form sections in logical order
+const FORM_SECTIONS = [
+  "your-details",
+  "victim-role", 
+  "your-role",
+  "incident-details",
+  "evidence",
+  "witness-details",
+  "suspect-details"
+]
+
+// Updated to match the JSON structure from all form sections
 interface FormData {
-  // Personal details
+  // Personal details (your-details.json)
   title?: string
   first_name?: string
   surname?: string
@@ -23,13 +34,101 @@ interface FormData {
   dob_year?: string
   sex?: string
   phone_number?: string
-  
-  // Address fields
   building_name?: string
   building_number?: string
   street?: string
   town_city?: string
   postcode?: string
+  
+  // Victim role (victim-role.json)
+  under18?: string
+  guardian_title?: string
+  guardian_first_name?: string
+  guardian_surname?: string
+  guardian_email?: string
+  other_crimes12m?: string
+  other_crimes_description?: string
+  health_issues?: string
+  health_issues_details?: string
+  victim_support?: string
+  disability?: string
+  ethnicity?: string
+  pre_contact?: string
+  alt_action_if_no_website?: string
+  pre_contact_other_details?: string
+  
+  // Your role (your-role.json)
+  involvement?: string
+  victim_title?: string
+  victim_first_name?: string
+  victim_surname?: string
+  victim_age?: string
+  victim_sex?: string
+  victim_email?: string
+  victim_phone?: string
+  victim_address_lookup?: string
+  victim_building_name?: string
+  victim_building_number?: string
+  victim_street?: string
+  victim_town_city?: string
+  victim_postcode?: string
+  victim_description?: string
+  victim_connection_explain?: string
+  victim_under18?: string
+  victim_other_crimes12m?: string
+  victim_health_issues?: string
+  victim_contact_support?: string
+  victim_disability?: string
+  victim_ethnicity?: string
+  business_name?: string
+  business_email?: string
+  business_phone?: string
+  business_address_lookup?: string
+  business_building_name?: string
+  business_building_number?: string
+  business_street?: string
+  business_town_city?: string
+  business_postcode?: string
+  business_description?: string
+  business_connection_explain?: string
+  
+  // Incident details (incident-details.json)
+  already_reported?: string
+  reference_number?: string
+  start_day?: string
+  start_month?: string
+  start_year?: string
+  end_day?: string
+  end_month?: string
+  end_year?: string
+  start_hour?: string
+  start_minute?: string
+  end_hour?: string
+  end_minute?: string
+  approx_time_note?: string
+  incident_address_display?: string
+  incident_location_detail?: string
+  public_transport?: string
+  transport_card_details?: string
+  incident_narrative?: string
+  bias_factor?: string
+  bias_factor_explain?: string
+  
+  // Evidence (evidence.json)
+  suspect_left_items?: string
+  suspect_items_description?: string
+  have_personal_media?: string
+  third_party_video?: string
+  third_party_contact?: string
+  third_party_content?: string
+  third_party_appearance?: string
+  
+  // Witness details (witness-details.json) - repeatable group
+  has_witnesses?: string
+  // Witness fields will be indexed: wit_title_0, wit_first_name_0, etc.
+  
+  // Suspect details (suspect-details.json) - repeatable group
+  // Suspect fields will be indexed: suspect_known_0, sus_first_name_0, etc.
   
   // Legacy fields for backward compatibility
   name?: string
@@ -50,6 +149,7 @@ export default function TraumaVoiceForm() {
   const [audioLevel, setAudioLevel] = useState(0)
   const [formData, setFormData] = useState<FormData>({})
   const [simulateAudio, setSimulateAudio] = useState(false)
+  const [currentFormSection, setCurrentFormSection] = useState(0)
   const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -335,6 +435,26 @@ export default function TraumaVoiceForm() {
     })
   }
 
+  const nextFormSection = () => {
+    if (currentFormSection < FORM_SECTIONS.length - 1) {
+      setCurrentFormSection(currentFormSection + 1)
+    } else {
+      setStage("review")
+    }
+  }
+
+  const previousFormSection = () => {
+    if (currentFormSection > 0) {
+      setCurrentFormSection(currentFormSection - 1)
+    } else {
+      setStage("conversation")
+    }
+  }
+
+  const goToFormSection = (index: number) => {
+    setCurrentFormSection(index)
+  }
+
   const renderLandingPage = () => (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
       <QuickExit />
@@ -480,8 +600,8 @@ export default function TraumaVoiceForm() {
             </form>
 
             <div className="text-center">
-              <Button onClick={() => setStage("review")} variant="outline" className="text-slate-600 border-slate-300">
-                I'm ready to review what we've discussed
+              <Button onClick={() => setStage("form")} variant="outline" className="text-slate-600 border-slate-300">
+                I'm ready to fill out the form
               </Button>
             </div>
           </div>
@@ -489,7 +609,151 @@ export default function TraumaVoiceForm() {
 
         {/* Live Form Section */}
         <div className="w-96 flex-shrink-0 p-4 border-l border-slate-200 bg-white/30 backdrop-blur-sm flex flex-col">
-          <DynamicForm sectionName="your-details" formData={formData} />
+          {/* Form Section Navigation */}
+          <div className="mb-4">
+            <div className="text-sm font-medium text-slate-700 mb-2">
+              {FORM_SECTIONS[currentFormSection].replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            </div>
+            <div className="flex items-center justify-between mb-2">
+              <Button
+                onClick={previousFormSection}
+                variant="ghost"
+                size="sm"
+                disabled={currentFormSection === 0}
+                className="text-xs"
+              >
+                <ArrowLeft className="w-3 h-3 mr-1" />
+                Previous
+              </Button>
+              
+              <div className="text-xs text-slate-600">
+                {currentFormSection + 1} of {FORM_SECTIONS.length}
+              </div>
+              
+              <Button
+                onClick={nextFormSection}
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+              >
+                Next
+                <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            </div>
+
+            {/* Section Progress */}
+            <div className="flex gap-1">
+              {FORM_SECTIONS.map((section, index) => (
+                <button
+                  key={section}
+                  onClick={() => goToFormSection(index)}
+                  className={`flex-1 h-1 rounded-full transition-colors ${
+                    index === currentFormSection
+                      ? 'bg-blue-500'
+                      : index < currentFormSection
+                      ? 'bg-blue-300'
+                      : 'bg-slate-200'
+                  }`}
+                  title={`Go to ${section.replace('-', ' ')}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <DynamicForm sectionName={FORM_SECTIONS[currentFormSection]} formData={formData} />
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderForm = () => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+      <QuickExit />
+
+      <div className="max-w-4xl w-full flex flex-col items-center">
+        <div className="text-center mb-8">
+          <VoiceCircle isActive={false} size="md" />
+          <h2 className="text-2xl font-light text-slate-700 mt-6 mb-4">Complete Your Report</h2>
+          <p className="text-slate-600">
+            Please fill out each section of the form. You can navigate between sections using the buttons below.
+          </p>
+        </div>
+
+        {/* Form Section Navigation */}
+        <div className="w-full max-w-2xl mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <Button
+              onClick={previousFormSection}
+              variant="outline"
+              disabled={currentFormSection === 0}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Previous
+            </Button>
+            
+            <div className="text-sm text-slate-600">
+              Section {currentFormSection + 1} of {FORM_SECTIONS.length}
+            </div>
+            
+            <Button
+              onClick={nextFormSection}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              Next
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Section Progress */}
+          <div className="flex gap-1 mb-4">
+            {FORM_SECTIONS.map((section, index) => (
+              <button
+                key={section}
+                onClick={() => goToFormSection(index)}
+                className={`flex-1 h-2 rounded-full transition-colors ${
+                  index === currentFormSection
+                    ? 'bg-blue-500'
+                    : index < currentFormSection
+                    ? 'bg-blue-300'
+                    : 'bg-slate-200'
+                }`}
+                title={`Go to ${section.replace('-', ' ')}`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Current Form Section */}
+        <div className="w-full flex justify-center mb-8">
+          <DynamicForm 
+            sectionName={FORM_SECTIONS[currentFormSection]} 
+            formData={formData} 
+            isEditable={true} 
+            onUpdate={handleFormUpdate}
+            showNavigation={true}
+            onNext={nextFormSection}
+            onPrevious={previousFormSection}
+            isFirstSection={currentFormSection === 0}
+            isLastSection={currentFormSection === FORM_SECTIONS.length - 1}
+          />
+        </div>
+
+        <div className="flex justify-center gap-4">
+          <Button
+            onClick={() => setStage("conversation")}
+            variant="outline"
+            className="px-6 py-3 border-slate-300 text-slate-600"
+          >
+            Back to Conversation
+          </Button>
+          <Button 
+            onClick={() => setStage("review")} 
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3"
+          >
+            Review All Information
+          </Button>
         </div>
       </div>
     </div>
@@ -499,29 +763,40 @@ export default function TraumaVoiceForm() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
       <QuickExit />
 
-      <div className="max-w-4xl w-full flex flex-col items-center">
+      <div className="max-w-6xl w-full flex flex-col items-center">
         <div className="text-center mb-8">
           <VoiceCircle isActive={false} size="md" />
           <h2 className="text-2xl font-light text-slate-700 mt-6 mb-4">Review Your Information</h2>
           <p className="text-slate-600">
-            Please review what we've discussed. You can edit anything that doesn't look right.
+            Please review all the information we've collected. You can edit anything that doesn't look right.
           </p>
         </div>
 
-        <div className="w-full flex justify-center mb-8">
-          <DynamicForm sectionName="your-details" formData={formData} isEditable={true} onUpdate={handleFormUpdate} />
+        {/* All Form Sections */}
+        <div className="w-full max-h-[70vh] overflow-y-auto space-y-6 mb-8">
+          {FORM_SECTIONS.map((sectionName, index) => (
+            <div key={sectionName} className="w-full">
+              <DynamicForm 
+                sectionName={sectionName} 
+                formData={formData} 
+                isEditable={true} 
+                onUpdate={handleFormUpdate}
+                showNavigation={false}
+              />
+            </div>
+          ))}
         </div>
 
         <div className="flex justify-center gap-4">
           <Button
-            onClick={() => setStage("conversation")}
+            onClick={() => setStage("form")}
             variant="outline"
             className="px-6 py-3 border-slate-300 text-slate-600"
           >
-            Continue Talking
+            Back to Form
           </Button>
           <Button onClick={() => setStage("complete")} className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3">
-            This looks good
+            Submit Report
           </Button>
         </div>
       </div>
@@ -599,6 +874,8 @@ export default function TraumaVoiceForm() {
       return renderLandingPage()
     case "conversation":
       return renderConversation()
+    case "form":
+      return renderForm()
     case "review":
       return renderReview()
     case "complete":
