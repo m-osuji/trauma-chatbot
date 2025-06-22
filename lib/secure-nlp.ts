@@ -1,4 +1,5 @@
 import { ConversationStateManager } from './conversation-state'
+import { SemanticNLP } from './semantic-nlp'
 
 export interface ProcessedInput {
   sentiment: number // -1 to 1
@@ -42,6 +43,7 @@ interface ConversationProgress {
 export class SecureNLPPipeline {
   private static instance: SecureNLPPipeline
   private stateManager: ConversationStateManager
+  private semanticNLP: SemanticNLP
 
   static getInstance(): SecureNLPPipeline {
     if (!SecureNLPPipeline.instance) {
@@ -52,6 +54,7 @@ export class SecureNLPPipeline {
 
   private constructor() {
     this.stateManager = ConversationStateManager.getInstance()
+    this.semanticNLP = SemanticNLP.getInstance()
   }
 
   // SECURITY: Enhanced input sanitization to prevent any data leakage
@@ -235,14 +238,25 @@ export class SecureNLPPipeline {
   private classifyIntentWithContext(text: string, indicators: TraumaIndicators): string {
     const lowerText = text.toLowerCase()
     
-    // Check for simple name responses first
-    if (/^[a-zA-Z]+$/.test(text.trim()) && text.length > 2 && text.length < 20) {
+    // Check for simple name responses first - but exclude common words
+    const commonWords = ['yesterday', 'today', 'tomorrow', 'morning', 'afternoon', 'evening', 'night', 'tonight', 'week', 'month', 'year', 'ago', 'now', 'then', 'here', 'there', 'where', 'when', 'what', 'how', 'why', 'yes', 'no', 'okay', 'fine', 'good', 'bad', 'well', 'ill', 'sick', 'hurt', 'pain', 'scared', 'afraid', 'alone', 'help', 'please', 'thank', 'sorry', 'excuse', 'pardon']
+    if (/^[a-zA-Z]+$/.test(text.trim()) && text.length > 2 && text.length < 20 && !commonWords.includes(lowerText)) {
       return 'provide_personal_info'
     }
     
     // Check for simple age responses
     if (/^\d+$/.test(text.trim()) && parseInt(text) >= 1 && parseInt(text) <= 120) {
       return 'provide_personal_info'
+    }
+    
+    // Check for timing-only responses (like "yesterday", "last week", etc.)
+    if (indicators.hasTiming && !indicators.hasIncident && !indicators.hasLocation && !indicators.hasPerpetrator) {
+      return 'provide_timing_info'
+    }
+    
+    // Check for incident continuation (when user provides more details about what happened)
+    if (indicators.hasIncident && (indicators.hasPerpetrator || text.match(/called me|said|told me|shouted|yelled|insulted|abused|harassed|whore|slut|bitch|stupid|idiot|ugly|fat|worthless|useless/i))) {
+      return 'continue_incident_narrative'
     }
     
     // High-priority trauma detection for direct victims
@@ -524,6 +538,22 @@ export class SecureNLPPipeline {
       if (text.match(/trapped|wouldn't let|couldn't leave/i)) {
         extracted.incident_narrative = 'I was trapped or prevented from leaving'
       }
+      // Handle verbal abuse and harassment
+      if (text.match(/called me|said|told me|shouted|yelled|insulted|abused|harassed/i)) {
+        extracted.incident_narrative = 'Verbal abuse or harassment occurred'
+      }
+      // Handle specific offensive language patterns
+      if (text.match(/whore|slut|bitch|stupid|idiot|ugly|fat|worthless|useless/i)) {
+        extracted.incident_narrative = 'Offensive language was used'
+      }
+      // Handle physical violence
+      if (text.match(/hit|punch|slap|kick|strike|beat|attack/i)) {
+        extracted.incident_narrative = 'Physical violence occurred'
+      }
+      // Handle physical contact
+      if (text.match(/touched|grabbed|held|pushed|pulled|force|forced/i)) {
+        extracted.incident_narrative = 'Physical contact occurred'
+      }
     }
 
     return extracted
@@ -597,7 +627,12 @@ export class SecureNLPPipeline {
       provide_suspect_info: {
         low: "Thank you for that information. Can you tell me more about what happened to you?",
         medium: "I understand. Can you describe what happened in more detail?",
-        high: "Thank you for sharing that. I'm here to help you through this difficult process."
+        high: "Thank you for sharing that. Can you tell me more about the incident?"
+      },
+      continue_incident_narrative: {
+        low: "I understand what happened. Can you tell me more about the incident? What else occurred?",
+        medium: "Thank you for sharing that detail. Can you tell me more about what happened?",
+        high: "I understand what they did. Can you tell me more about the incident? Take your time."
       },
       general_conversation: {
         low: "I'm here to listen. Can you tell me more about what you'd like to discuss?",
@@ -654,6 +689,11 @@ export class SecureNLPPipeline {
         medium: "I understand. Can you describe what happened in more detail?",
         high: "Thank you for sharing that. Can you tell me more about the incident?"
       },
+      continue_incident_narrative: {
+        low: "I understand what happened. Can you tell me more about the incident? What else occurred?",
+        medium: "Thank you for sharing that detail. Can you tell me more about what happened?",
+        high: "I understand what they did. Can you tell me more about the incident? Take your time."
+      },
       general_conversation: {
         low: "I'm here to listen. What would you like to discuss?",
         medium: "I'm here to support you. What's on your mind?",
@@ -706,76 +746,114 @@ export class SecureNLPPipeline {
     return Math.min(0.95, confidence)
   }
 
-  private generateIntelligentResponse(intent: string, riskLevel: 'low' | 'medium' | 'high', extractedData: Record<string, any>, text: string): string {
-    // If we just got a name, acknowledge it and ask for age
-    if (extractedData.first_name && !extractedData.age) {
-      return `Thank you ${extractedData.first_name}. How old are you? This helps us provide appropriate support.`
-    }
+  private generateIntelligentResponse(intent: string, riskLevel: 'low' | 'medium' | 'high', extractedData: Record<string, any>, text: string, indicators: TraumaIndicators): string {
+    const state = this.stateManager.getState()
     
-    // If we just got an age, ask for timing
-    if (extractedData.age && !extractedData.start_day) {
-      return "When did this happen? Can you tell me the date and time?"
-    }
-    
-    // If we have timing info, acknowledge it and ask for location
-    if (extractedData.start_day && !extractedData.town_city) {
-      let timingAck = "I understand when this happened"
-      if (extractedData.start_time) {
-        timingAck += ` at ${extractedData.start_time}`
+    // PRIORITY 1: Handle newly extracted data with intelligent acknowledgment
+    if (Object.keys(extractedData).length > 0) {
+      // Name extraction
+      if (extractedData.first_name && !state.progress.hasAge) {
+        return `Thank you ${extractedData.first_name}. How old are you? This helps us provide appropriate support.`
       }
-      return `${timingAck}. Can you tell me where this occurred?`
+      
+      // Age extraction
+      if (extractedData.age && state.progress.hasName && !state.progress.hasTiming) {
+        return "When did this happen? You can say things like 'yesterday', 'last week', 'this morning', or give me a specific date and time."
+      }
+      
+      // Timing extraction
+      if (extractedData.start_day && state.progress.hasName && state.progress.hasAge && !state.progress.hasLocation) {
+        let timingAck = "I understand when this happened"
+        if (extractedData.start_time) {
+          timingAck += ` at ${extractedData.start_time}`
+        }
+        return `${timingAck}. Can you tell me where this occurred?`
+      }
+      
+      // Location extraction
+      if (extractedData.town_city && state.progress.hasTiming && !state.progress.hasNarrative) {
+        return `I understand you were in ${extractedData.town_city}. Can you tell me what happened? What did this person do or say?`
+      }
+      
+      // Incident narrative extraction
+      if (extractedData.incident_narrative && !state.progress.hasEvidence) {
+        return "Thank you for sharing that. Do you have any photos, videos, or other evidence from the incident?"
+      }
+      
+      // Contact information extraction
+      if ((extractedData.email || extractedData.phone_number) && !state.progress.hasContact) {
+        return "Thank you for providing your contact information. Is there anything else you'd like to add about what happened?"
+      }
     }
     
-    // If we have location info but missing timing
-    if (extractedData.town_city && !extractedData.start_day && text.match(/waiting|toilet/i)) {
-      return `I understand you were in ${extractedData.town_city}. Can you tell me when this happened? What day and time was it?`
+    // PRIORITY 2: Handle incident narrative continuation (when user provides more details)
+    if (indicators.hasIncident && state.progress.hasLocation && !state.progress.hasNarrative) {
+      // User is providing incident details after location
+      if (text.match(/called me|said|told me|shouted|yelled/i)) {
+        return "I understand what they said to you. Can you tell me more about what happened? Did they do anything else besides saying those things?"
+      }
+      if (text.match(/touched|grabbed|pushed|pulled|hit/i)) {
+        return "I understand there was physical contact. Can you tell me more about what happened? What did they do exactly?"
+      }
+      return "Thank you for sharing that. Can you tell me more about what happened? What else did this person do or say?"
     }
     
-    // If we have perpetrator info but missing incident details
-    if (text.match(/guy came up|man came up|approached/i) && !extractedData.incident_narrative) {
-      return "I understand someone approached you. Can you tell me what happened when they came up to you? What did they do or say?"
+    // PRIORITY 2.5: Handle incident narrative when user has already provided some details
+    if (indicators.hasIncident && state.progress.hasLocation && state.progress.hasNarrative) {
+      // User is providing additional incident details
+      if (text.match(/hit|punch|slap|kick/i)) {
+        return "I understand there was physical violence. This is very serious. Do you have any photos, videos, or other evidence from the incident?"
+      }
+      if (text.match(/threatened|said they would|said he would|said she would/i)) {
+        return "I understand there were threats involved. Do you have any evidence or witnesses who saw what happened?"
+      }
+      return "Thank you for sharing those additional details. Do you have any photos, videos, or other evidence from the incident?"
     }
     
-    // If we have vulnerability info but missing incident details
-    if (extractedData.disability === 'Yes' && extractedData.age && !extractedData.incident_narrative) {
-      return "I understand you're young and use a wheelchair. Can you tell me what happened when this person came up to you?"
+    // PRIORITY 3: Handle high-risk trauma patterns with appropriate sensitivity
+    if (indicators.hasComplexTrauma) {
+      if (text.match(/trapped|wouldn't let|couldn't leave/i)) {
+        return "That sounds like a very frightening experience. You're being very brave by sharing this. Can you tell me more about what happened when you felt trapped?"
+      }
+      if (text.match(/followed|stalking|watching/i)) {
+        return "Being followed or watched is very scary and violating. Can you tell me more about what happened when you noticed someone following you?"
+      }
+      if (text.match(/threatened|said they would/i)) {
+        return "Threats are very serious and frightening. I want you to know you're safe here. Can you tell me what happened when this person threatened you?"
+      }
     }
     
-    // Enhanced handling for complex trauma patterns
-    if (text.match(/trapped|wouldn't let|couldn't leave/i)) {
-      return "That sounds like a very frightening experience. You're being very brave by sharing this. Can you tell me more about what happened when you felt trapped?"
+    // PRIORITY 4: Handle vulnerability context with appropriate sensitivity
+    if (extractedData.vulnerability_context === 'alone' && extractedData.age && parseInt(extractedData.age) < 18) {
+      if (extractedData.disability === 'Yes') {
+        return "I understand you're young, use a wheelchair, and were alone when something happened. That must have been really difficult and scary. Can you tell me what occurred when you were by yourself? You're being very brave by sharing this."
+      } else {
+        return "I understand you're young and were alone when something happened. That must have been really difficult and scary. Can you tell me what occurred when you were by yourself? You're being very brave by sharing this."
+      }
     }
     
-    if (text.match(/followed|stalking|watching/i)) {
-      return "Being followed or watched is very scary. Can you tell me more about what happened when you noticed someone following you?"
-    }
-    
-    if (text.match(/threatened|said they would|said he would|said she would/i)) {
-      return "Threats are very serious and frightening. Can you tell me what happened when this person threatened you?"
-    }
-    
-    // Default to asking for missing information
-    const missingInfo = this.getMissingInformation(extractedData)
+    // PRIORITY 5: Ask for missing information based on CONVERSATION STATE (not just current message)
+    const missingInfo = this.getMissingInformationFromState(state)
     if (missingInfo.length > 0) {
       const nextInfo = missingInfo[0]
-      return this.getQuestionForMissingInfo(nextInfo, extractedData)
+      return this.getQuestionForMissingInfo(nextInfo, state.extractedData)
     }
     
-    // Fallback to general response
+    // PRIORITY 6: Fallback to intent-based responses
     return this.generateResponse(intent, riskLevel)
   }
 
-  private getMissingInformation(extractedData: Record<string, any>): string[] {
+  private getMissingInformationFromState(state: any): string[] {
     const missing: string[] = []
     
-    // Priority order for information gathering
-    if (!extractedData.first_name) missing.push('name')
-    if (!extractedData.age) missing.push('age')
-    if (!extractedData.start_day) missing.push('timing')
-    if (!extractedData.town_city) missing.push('location')
-    if (!extractedData.incident_narrative) missing.push('narrative')
-    if (!extractedData.disability) missing.push('disability')
-    if (!extractedData.email && !extractedData.phone_number) missing.push('contact')
+    // Priority order for information gathering based on conversation state
+    if (!state.progress.hasName) missing.push('name')
+    if (!state.progress.hasAge) missing.push('age')
+    if (!state.progress.hasTiming) missing.push('timing')
+    if (!state.progress.hasLocation) missing.push('location')
+    if (!state.progress.hasNarrative) missing.push('narrative')
+    if (!state.progress.hasDisability) missing.push('disability')
+    if (!state.progress.hasContact) missing.push('contact')
     
     return missing
   }
@@ -801,55 +879,43 @@ export class SecureNLPPipeline {
     }
   }
 
-  private generateContextualResponse(intent: string, riskLevel: 'low' | 'medium' | 'high', extractedData: Record<string, any>, text: string, nextQuestion: string): string {
-    const state = this.stateManager.getState()
-    const name = state.extractedData.first_name || 'there'
-
-    // If we just got new data, acknowledge it and ask the next question
-    if (Object.keys(extractedData).length > 0) {
-      // Check if we just got a name
-      if (extractedData.first_name && !state.progress.hasAge) {
-        return `Thank you ${extractedData.first_name}. How old are you? This helps us provide appropriate support.`
-      }
-      
-      // Check if we just got an age
-      if (extractedData.age && state.progress.hasName && !state.progress.hasTiming) {
-        return "When did this happen? You can say things like 'yesterday', 'last week', 'this morning', or give me a specific date and time."
-      }
-      
-      // Check if we just got timing info
-      if (extractedData.start_day && !state.progress.hasLocation) {
-        let timingAck = "I understand when this happened"
-        if (extractedData.start_time) {
-          timingAck += ` at ${extractedData.start_time}`
-        }
-        return `${timingAck}. Can you tell me where this occurred?`
-      }
-      
-      // Check if we just got location info
-      if (extractedData.town_city && !state.progress.hasNarrative) {
-        return `I understand you were in ${extractedData.town_city}. Can you tell me what happened? What did this person do or say?`
-      }
-      
-      // Check if we just got incident narrative
-      if (extractedData.incident_narrative && !state.progress.hasEvidence) {
-        return "Thank you for sharing that. Do you have any photos, videos, or other evidence from the incident?"
-      }
-      
-      // Default acknowledgment and next question
-      return nextQuestion
-    }
-
-    // If no new data extracted, ask the next question
-    return nextQuestion
-  }
-
   async processInput(text: string): Promise<ProcessedInput> {
     const sanitized = this.sanitizeInput(text)
     const indicators = this.detectTraumaIndicators(sanitized)
     const sentiment = this.analyzeSentiment(sanitized)
-    const intent = this.classifyIntentWithContext(sanitized, indicators)
-    const extractedData = this.extractDataWithContext(sanitized, intent, indicators)
+    
+    // Use semantic NLP for intent classification and data extraction
+    let intent: string
+    let extractedData: Record<string, any>
+    let confidence: number
+    
+    try {
+      const semanticResult = await this.semanticNLP.classifyIntent(sanitized)
+      intent = semanticResult.intent
+      extractedData = semanticResult.extractedData
+      confidence = semanticResult.confidence
+      
+      // If semantic NLP didn't extract data, fall back to pattern matching
+      if (Object.keys(extractedData).length === 0) {
+        const fallbackIntent = this.classifyIntentWithContext(sanitized, indicators)
+        const fallbackData = this.extractDataWithContext(sanitized, fallbackIntent, indicators)
+        
+        // Use semantic intent if it's more specific than fallback
+        if (intent === 'general_conversation' && fallbackIntent !== 'general_conversation') {
+          intent = fallbackIntent
+          extractedData = fallbackData
+        } else {
+          // Merge extracted data
+          Object.assign(extractedData, fallbackData)
+        }
+      }
+    } catch (error) {
+      console.warn('Semantic NLP failed, using fallback:', error)
+      intent = this.classifyIntentWithContext(sanitized, indicators)
+      extractedData = this.extractDataWithContext(sanitized, intent, indicators)
+      confidence = this.calculateConfidence(indicators, intent, extractedData, sanitized)
+    }
+    
     const riskLevel = this.assessTraumaRisk(indicators, intent, extractedData)
     
     // Update conversation state with new data
@@ -858,44 +924,8 @@ export class SecureNLPPipeline {
     // Get the next question based on current state
     const { question: nextQuestion, stage } = this.stateManager.getNextQuestion()
     
-    // Generate intelligent response
-    let response = this.generateIntelligentResponse(intent, riskLevel, extractedData, sanitized)
-    
-    // Special handling for minors who mention being alone
-    if (extractedData.age && parseInt(extractedData.age) < 18 && extractedData.vulnerability_context === 'alone') {
-      if (extractedData.disability === 'Yes') {
-        response = "I understand you're young, use a wheelchair, and were alone when something happened. That must have been really difficult and scary. Can you tell me what occurred when you were by yourself? You're being very brave by sharing this."
-      } else {
-        response = "I understand you're young and were alone when something happened. That must have been really difficult and scary. Can you tell me what occurred when you were by yourself? You're being very brave by sharing this."
-      }
-    }
-    
-    // Special handling for minors in general
-    else if (extractedData.age && parseInt(extractedData.age) < 18) {
-      if (extractedData.disability === 'Yes') {
-        response = "Thank you for reaching out. I want you to know that you're in a safe space here, and it's okay to take your time. I understand you use a wheelchair and are young - can you tell me what happened?"
-      } else {
-        response = "Thank you for reaching out. I want you to know that you're in a safe space here, and it's okay to take your time. Can you tell me what happened?"
-      }
-    }
-    
-    // Special handling for wheelchair users
-    else if (extractedData.disability === 'Yes' && extractedData.vulnerability_context === 'alone') {
-      response = "I understand you use a wheelchair and were alone when something happened. That must have been really difficult. Can you tell me what occurred when you were by yourself?"
-    }
-
-    // Special handling for complex trauma patterns
-    if (indicators.hasComplexTrauma) {
-      if (text.match(/trapped|wouldn't let|couldn't leave/i)) {
-        response = "Being trapped or prevented from leaving is extremely frightening. You're being very brave by sharing this. Can you tell me more about what happened when you felt trapped?"
-      } else if (text.match(/followed|stalking|watching/i)) {
-        response = "Being followed or watched is very scary and violating. Can you tell me more about what happened when you noticed someone following you?"
-      } else if (text.match(/threatened|said they would/i)) {
-        response = "Threats are very serious and frightening. I want you to know you're safe here. Can you tell me what happened when this person threatened you?"
-      }
-    }
-
-    const confidence = this.calculateConfidence(indicators, intent, extractedData, sanitized)
+    // Generate intelligent response (this is the single source of truth for responses)
+    const response = this.generateIntelligentResponse(intent, riskLevel, extractedData, sanitized, indicators)
 
     // SECURITY: Log only non-sensitive metadata
     this.safeLog('Processing completed', {
@@ -904,7 +934,8 @@ export class SecureNLPPipeline {
       confidence: confidence.toFixed(2),
       hasExtractedData: Object.keys(extractedData).length > 0,
       currentStage: stage,
-      hasComplexTrauma: indicators.hasComplexTrauma
+      hasComplexTrauma: indicators.hasComplexTrauma,
+      method: 'semantic_nlp'
     })
 
     const responseId = Date.now().toString()

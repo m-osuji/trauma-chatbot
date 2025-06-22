@@ -57,15 +57,31 @@ export class ConversationStateManager {
     
     // Update progress based on extracted data
     if (extractedData.first_name) this.state.progress.hasName = true
-    if (extractedData.age) this.state.progress.hasAge = true
+    if (extractedData.age) {
+      this.state.progress.hasAge = true
+      // Map age to under18 field for form compatibility
+      const age = parseInt(extractedData.age)
+      if (age < 18) {
+        this.state.extractedData.under18 = 'Yes'
+      } else {
+        this.state.extractedData.under18 = 'No'
+      }
+    }
     if (extractedData.start_day || extractedData.start_month || extractedData.start_year) this.state.progress.hasTiming = true
     if (extractedData.town_city) this.state.progress.hasLocation = true
     if (extractedData.incident_narrative) this.state.progress.hasNarrative = true
     if (extractedData.disability) this.state.progress.hasDisability = true
     if (extractedData.email || extractedData.phone_number) this.state.progress.hasContact = true
-    if (extractedData.suspect_known_0) this.state.progress.hasSuspect = true
+    if (extractedData.suspect_known) this.state.progress.hasSuspect = true
     if (extractedData.has_witnesses) this.state.progress.hasWitnesses = true
-    if (extractedData.have_personal_media) this.state.progress.hasEvidence = true
+    if (extractedData.have_personal_media || extractedData.third_party_video) this.state.progress.hasEvidence = true
+    
+    // Additional field mappings
+    if (extractedData.public_transport) this.state.extractedData.public_transport = extractedData.public_transport
+    if (extractedData.transport_card_details) this.state.extractedData.transport_card_details = extractedData.transport_card_details
+    if (extractedData.suspect_left_items) this.state.extractedData.suspect_left_items = extractedData.suspect_left_items
+    if (extractedData.health_issues) this.state.extractedData.health_issues = extractedData.health_issues
+    if (extractedData.vulnerability_context) this.state.extractedData.vulnerability_context = extractedData.vulnerability_context
 
     // Check for complex trauma patterns
     const text = JSON.stringify(extractedData).toLowerCase()
