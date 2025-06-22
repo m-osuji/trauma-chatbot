@@ -1,3 +1,5 @@
+import { ConversationStateManager } from './conversation-state'
+
 export interface ProcessedInput {
   sentiment: number // -1 to 1
   intent: string
@@ -7,6 +9,8 @@ export interface ProcessedInput {
   indicators: TraumaIndicators
   confidence: number // 0 to 1 - how confident we are in our processing
   responseId: string // Unique identifier to prevent repetition
+  nextQuestion: string // What question to ask next
+  progress: ConversationProgress // Track what's been answered
 }
 
 interface TraumaIndicators {
@@ -19,16 +23,35 @@ interface TraumaIndicators {
   hasPerpetrator: boolean
   hasPhysicalContact: boolean
   hasEmotionalDistress: boolean
+  hasComplexTrauma: boolean // New indicator for complex trauma patterns
+}
+
+interface ConversationProgress {
+  hasName: boolean
+  hasAge: boolean
+  hasTiming: boolean
+  hasLocation: boolean
+  hasNarrative: boolean
+  hasDisability: boolean
+  hasContact: boolean
+  hasSuspect: boolean
+  hasWitnesses: boolean
+  hasEvidence: boolean
 }
 
 export class SecureNLPPipeline {
   private static instance: SecureNLPPipeline
+  private stateManager: ConversationStateManager
 
   static getInstance(): SecureNLPPipeline {
     if (!SecureNLPPipeline.instance) {
       SecureNLPPipeline.instance = new SecureNLPPipeline()
     }
     return SecureNLPPipeline.instance
+  }
+
+  private constructor() {
+    this.stateManager = ConversationStateManager.getInstance()
   }
 
   // SECURITY: Enhanced input sanitization to prevent any data leakage
@@ -58,19 +81,115 @@ export class SecureNLPPipeline {
     }
   }
 
+  // Enhanced relative time parsing
+  private parseRelativeTime(text: string): { start_day?: string; start_month?: string; start_year?: string; start_time?: string } {
+    const lowerText = text.toLowerCase()
+    const now = new Date()
+    let targetDate = new Date(now)
+    
+    // Handle relative time expressions
+    if (lowerText.includes('yesterday')) {
+      targetDate.setDate(now.getDate() - 1)
+    } else if (lowerText.includes('day before yesterday')) {
+      targetDate.setDate(now.getDate() - 2)
+    } else if (lowerText.includes('last night')) {
+      targetDate.setDate(now.getDate() - 1)
+      targetDate.setHours(20, 0, 0, 0) // 8 PM
+    } else if (lowerText.includes('this morning')) {
+      targetDate.setHours(9, 0, 0, 0) // 9 AM
+    } else if (lowerText.includes('this afternoon')) {
+      targetDate.setHours(14, 0, 0, 0) // 2 PM
+    } else if (lowerText.includes('this evening')) {
+      targetDate.setHours(18, 0, 0, 0) // 6 PM
+    } else if (lowerText.includes('last week')) {
+      targetDate.setDate(now.getDate() - 7)
+    } else if (lowerText.includes('two weeks ago')) {
+      targetDate.setDate(now.getDate() - 14)
+    } else if (lowerText.includes('last month')) {
+      targetDate.setMonth(now.getMonth() - 1)
+    } else if (lowerText.includes('few days ago')) {
+      targetDate.setDate(now.getDate() - 3)
+    } else if (lowerText.includes('couple of days ago')) {
+      targetDate.setDate(now.getDate() - 2)
+    } else if (lowerText.includes('hour ago')) {
+      targetDate.setHours(now.getHours() - 1)
+    } else if (lowerText.includes('hours ago')) {
+      const hoursMatch = lowerText.match(/(\d+)\s*hours?\s*ago/)
+      if (hoursMatch) {
+        targetDate.setHours(now.getHours() - parseInt(hoursMatch[1]))
+      }
+    } else if (lowerText.includes('minutes ago')) {
+      const minutesMatch = lowerText.match(/(\d+)\s*minutes?\s*ago/)
+      if (minutesMatch) {
+        targetDate.setMinutes(now.getMinutes() - parseInt(minutesMatch[1]))
+      }
+    } else if (lowerText.includes('today')) {
+      // Keep current date
+    } else if (lowerText.includes('tonight')) {
+      targetDate.setHours(20, 0, 0, 0) // 8 PM
+    }
+
+    // Extract specific time if mentioned
+    let timeString: string | undefined
+    const timePatterns = [
+      /(\d{1,2}):(\d{2})\s*(am|pm)/i,
+      /(\d{1,2})\s*(am|pm)/i,
+      /at\s*(\d{1,2}):(\d{2})/i,
+      /around\s*(\d{1,2}):(\d{2})/i
+    ]
+    
+    for (const pattern of timePatterns) {
+      const match = lowerText.match(pattern)
+      if (match) {
+        let hours = parseInt(match[1])
+        const minutes = match[2] ? parseInt(match[2]) : 0
+        const period = match[3]?.toLowerCase()
+        
+        if (period === 'pm' && hours !== 12) hours += 12
+        if (period === 'am' && hours === 12) hours = 0
+        
+        targetDate.setHours(hours, minutes, 0, 0)
+        timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+        break
+      }
+    }
+
+    return {
+      start_day: targetDate.getDate().toString(),
+      start_month: (targetDate.getMonth() + 1).toString(),
+      start_year: targetDate.getFullYear().toString(),
+      start_time: timeString
+    }
+  }
+
   private detectTraumaIndicators(text: string): TraumaIndicators {
     const lowerText = text.toLowerCase()
     
+    // Enhanced trauma detection patterns
+    const complexTraumaPatterns = [
+      /(?:kept|keeps|kept me|keeps me|wouldn't let|would not let|trapped|stuck|couldn't leave|could not leave)/i,
+      /(?:followed|following|stalked|stalking|watched|watching|kept appearing|kept showing up)/i,
+      /(?:threatened|threatening|said they would|said he would|said she would|warned|warning)/i,
+      /(?:touched|touching|grabbed|grabbing|held|holding|pushed|pushing|pulled|pulling)/i,
+      /(?:hurt|hurting|pain|painful|injured|injury|bruised|bruising|cut|cutting)/i,
+      /(?:scared|terrified|frightened|panicked|anxious|worried|nervous|shocked|traumatized)/i,
+      /(?:alone|by myself|on my own|without help|no one around|nobody there)/i,
+      /(?:vulnerable|weak|helpless|powerless|couldn't fight|could not fight|couldn't move)/i
+    ]
+    
+    const hasComplexTrauma = complexTraumaPatterns.some(pattern => pattern.test(lowerText))
+    
     return {
-      hasIncident: /(?:assault|attack|abuse|harassment|incident|situation|happened|occurred|took place|went through|man came up|approached)/i.test(lowerText),
-      hasThreat: /(?:hurt|kill|threaten|scared|afraid|terrified|dangerous|fear|worried)/i.test(lowerText),
-      hasUrgency: /(?:now|immediately|urgent|emergency|help|need|want|please|can't speak|can speak)/i.test(lowerText),
-      hasVulnerability: /(?:wheelchair|disability|alone|vulnerable|weak|difficult|hard|struggling|can't|cannot|15|fifteen|young|mum|mom|parent|guardian|toilet|waiting)/i.test(lowerText),
-      hasLocation: /(?:in|at|near|around|central|street|area|place|location|where)/i.test(lowerText),
-      hasTiming: /(?:yesterday|today|last|week|month|ago|when|time|date)/i.test(lowerText),
-      hasPerpetrator: /(?:he|she|they|man|woman|guy|person|someone|attacker|perpetrator|suspect)/i.test(lowerText),
-      hasPhysicalContact: /(?:touch|touched|grab|grabbed|hold|held|push|pushed|pull|pulled|force|forced)/i.test(lowerText),
-      hasEmotionalDistress: /(?:scared|afraid|terrified|shocked|traumatized|upset|angry|sad|depressed|anxious|panic)/i.test(lowerText)
+      hasIncident: /(?:assault|attack|abuse|harassment|incident|situation|happened|occurred|took place|went through|man came up|approached|guy came up|person came up)/i.test(lowerText),
+      hasThreat: /(?:hurt|kill|threaten|scared|afraid|terrified|dangerous|fear|worried|threatening|said they would|said he would|said she would)/i.test(lowerText),
+      hasUrgency: /(?:now|immediately|urgent|emergency|help|need|want|please|can't speak|can speak|right now|asap|quickly)/i.test(lowerText),
+      hasVulnerability: /(?:wheelchair|disability|alone|vulnerable|weak|difficult|hard|struggling|can't|cannot|15|fifteen|young|mum|mom|parent|guardian|toilet|waiting|by myself|on my own|helpless|powerless)/i.test(lowerText),
+      hasLocation: /(?:in|at|near|around|central|street|area|place|location|where|outside|inside|building|shop|store|park|station|bus|train)/i.test(lowerText),
+      hasTiming: /(?:yesterday|today|last|week|month|ago|when|time|date|morning|afternoon|evening|night|tonight|this morning|this afternoon|this evening|last night|few days|couple of days|hour|hours|minutes)/i.test(lowerText),
+      hasPerpetrator: /(?:he|she|they|man|woman|guy|person|someone|attacker|perpetrator|suspect|stranger|unknown|didn't know|did not know)/i.test(lowerText),
+      hasPhysicalContact: /(?:touch|touched|grab|grabbed|hold|held|push|pushed|pull|pulled|force|forced|hit|hitting|slap|slapping|punch|punching)/i.test(lowerText),
+      hasEmotionalDistress: /(?:scared|afraid|terrified|shocked|traumatized|upset|angry|sad|depressed|anxious|panic|crying|cried|tears|emotional|distressed|overwhelmed)/i.test(lowerText),
+      hasComplexTrauma
     }
   }
 
@@ -78,15 +197,32 @@ export class SecureNLPPipeline {
     try {
       const words = text.toLowerCase().split(/\s+/)
       let sentiment = 0
+      let traumaIntensity = 0
       
-      // Trauma-sensitive sentiment dictionary
-      const positiveWords = ['help', 'support', 'safe', 'better', 'okay', 'alright', 'good', 'fine', 'relief', 'hope']
-      const negativeWords = ['hurt', 'pain', 'scared', 'afraid', 'terrible', 'bad', 'awful', 'horrible', 'attack', 'assault', 'violence', 'abuse', 'trauma', 'shock', 'terrified']
+      // Enhanced trauma-sensitive sentiment dictionary
+      const positiveWords = ['help', 'support', 'safe', 'better', 'okay', 'alright', 'good', 'fine', 'relief', 'hope', 'thankful', 'grateful', 'protected', 'comforted']
+      const negativeWords = ['hurt', 'pain', 'scared', 'afraid', 'terrible', 'bad', 'awful', 'horrible', 'attack', 'assault', 'violence', 'abuse', 'trauma', 'shock', 'terrified', 'terrifying', 'nightmare', 'worst']
+      
+      // High-intensity trauma words (weighted more heavily)
+      const highIntensityWords = ['terrified', 'terrifying', 'traumatized', 'assaulted', 'attacked', 'violated', 'threatened', 'stalked', 'trapped', 'helpless', 'powerless', 'nightmare', 'worst', 'horrible', 'awful']
       
       words.forEach(word => {
         if (positiveWords.includes(word)) sentiment += 0.2
         if (negativeWords.includes(word)) sentiment -= 0.4
+        if (highIntensityWords.includes(word)) {
+          sentiment -= 0.6
+          traumaIntensity += 0.3
+        }
       })
+      
+      // Context-based sentiment adjustments
+      if (text.match(/alone|by myself|on my own/i)) sentiment -= 0.3
+      if (text.match(/wheelchair|disability|mobility/i)) sentiment -= 0.2
+      if (text.match(/young|teen|teenager|15|fifteen/i)) sentiment -= 0.2
+      if (text.match(/help|support|safe|protected/i)) sentiment += 0.3
+      
+      // Trauma intensity modifier
+      sentiment -= traumaIntensity
       
       // Normalize to -1 to 1 scale
       return Math.max(-1, Math.min(1, sentiment))
@@ -111,6 +247,11 @@ export class SecureNLPPipeline {
     
     // High-priority trauma detection for direct victims
     if (indicators.hasIncident && (indicators.hasThreat || indicators.hasPhysicalContact)) {
+      return 'report_incident'
+    }
+    
+    // Complex trauma patterns
+    if (indicators.hasComplexTrauma) {
       return 'report_incident'
     }
     
@@ -205,34 +346,14 @@ export class SecureNLPPipeline {
       }
     }
 
-    // Extract vulnerability context
-    if (indicators.hasVulnerability) {
-      const vulnerabilityPatterns = [
-        /i was alone/i,
-        /i'm alone/i,
-        /i am alone/i,
-        /by myself/i,
-        /on my own/i,
-        /without my mum/i,
-        /without my mom/i,
-        /without my parent/i,
-        /mum went to/i,
-        /mom went to/i,
-        /parent went to/i,
-        /guardian went to/i
-      ]
-      
-      for (const pattern of vulnerabilityPatterns) {
-        if (text.match(pattern)) {
-          extracted.vulnerability_context = 'alone'
-          extracted.alone_when_incident = 'Yes'
-          break
-        }
-      }
-    }
-
-    // Extract dates with context
+    // Extract timing information with relative time parsing
     if (indicators.hasTiming) {
+      const relativeTime = this.parseRelativeTime(text)
+      if (relativeTime.start_day) {
+        Object.assign(extracted, relativeTime)
+      }
+      
+      // Also extract specific date patterns
       const datePatterns = [
         /born on (\d{1,2})\/(\d{1,2})\/(\d{4})/i,
         /(\d{1,2})\/(\d{1,2})\/(\d{4})/i,
@@ -250,7 +371,37 @@ export class SecureNLPPipeline {
       }
     }
 
-    // Extract locations with context
+    // Extract vulnerability context
+    if (indicators.hasVulnerability) {
+      const vulnerabilityPatterns = [
+        /i was alone/i,
+        /i'm alone/i,
+        /i am alone/i,
+        /by myself/i,
+        /on my own/i,
+        /without my mum/i,
+        /without my mom/i,
+        /without my parent/i,
+        /mum went to/i,
+        /mom went to/i,
+        /parent went to/i,
+        /guardian went to/i,
+        /no one around/i,
+        /nobody there/i,
+        /helpless/i,
+        /powerless/i
+      ]
+      
+      for (const pattern of vulnerabilityPatterns) {
+        if (text.match(pattern)) {
+          extracted.vulnerability_context = 'alone'
+          extracted.alone_when_incident = 'Yes'
+          break
+        }
+      }
+    }
+
+    // Extract locations with enhanced context
     if (indicators.hasLocation) {
       const locationPatterns = [
         /i live in ([^.!?]+)/i,
@@ -263,7 +414,11 @@ export class SecureNLPPipeline {
         /([^.!?]*joburg[^.!?]*)/i,
         /([^.!?]*cape town[^.!?]*)/i,
         /waiting (?:outside|in|at) ([^.!?]+)/i,
-        /(?:outside|in|at) the ([^.!?]+)/i
+        /(?:outside|in|at) the ([^.!?]+)/i,
+        /at the ([^.!?]+)/i,
+        /in the ([^.!?]+)/i,
+        /near the ([^.!?]+)/i,
+        /around the ([^.!?]+)/i
       ]
       
       for (const pattern of locationPatterns) {
@@ -273,19 +428,31 @@ export class SecureNLPPipeline {
           const cleanLocation = location.replace(/^(central\s+|i was in\s+|it happened in\s+)/i, '')
           extracted.town_city = cleanLocation
           
-          // Extract more specific location details
+          // Extract location type based on context, not hard-coded places
           if (text.match(/toilet|bathroom|restroom/i)) {
             extracted.incident_location_detail = 'Near public toilets'
           }
-          if (text.match(/central london/i)) {
-            extracted.incident_location_detail = 'Central London area'
+          if (text.match(/shop|store|mall|shopping/i)) {
+            extracted.incident_location_detail = 'Shopping area'
+          }
+          if (text.match(/park|garden|playground/i)) {
+            extracted.incident_location_detail = 'Park or public space'
+          }
+          if (text.match(/station|bus|train|transport/i)) {
+            extracted.incident_location_detail = 'Transport hub'
+          }
+          if (text.match(/street|road|avenue/i)) {
+            extracted.incident_location_detail = 'Street or road'
+          }
+          if (text.match(/building|office|workplace/i)) {
+            extracted.incident_location_detail = 'Building or workplace'
           }
           break
         }
       }
     }
 
-    // Extract health/mobility issues with context
+    // Extract health/mobility issues with enhanced context
     if (indicators.hasVulnerability) {
       const healthPatterns = [
         /i'm in a wheelchair/i,
@@ -296,14 +463,17 @@ export class SecureNLPPipeline {
         /medical condition/i,
         /difficult for me/i,
         /hard for me/i,
-        /struggling/i
+        /struggling/i,
+        /can't move/i,
+        /cannot move/i,
+        /limited mobility/i
       ]
       
       for (const pattern of healthPatterns) {
         if (text.match(pattern)) {
           extracted.disability = 'Yes'
           extracted.health_issues = 'Yes'
-          const healthMatch = text.match(/(?:i'm in a|i have|i am|wheelchair|disability|mobility|health|difficult|hard|struggling)[^.!?]*/i)
+          const healthMatch = text.match(/(?:i'm in a|i have|i am|wheelchair|disability|mobility|health|difficult|hard|struggling|can't move|cannot move|limited)[^.!?]*/i)
           if (healthMatch) {
             extracted.health_issues_details = healthMatch[0].trim()
           }
@@ -319,13 +489,19 @@ export class SecureNLPPipeline {
       }
     }
 
-    // Extract incident narrative
+    // Extract incident narrative with enhanced patterns
     if (indicators.hasIncident) {
       const incidentPatterns = [
         /(?:guy|man|person) came up (?:to me|towards me)/i,
         /(?:guy|man|person) approached (?:me|towards me)/i,
         /(?:guy|man|person) walked up (?:to me|towards me)/i,
-        /(?:guy|man|person) came over (?:to me|towards me)/i
+        /(?:guy|man|person) came over (?:to me|towards me)/i,
+        /(?:guy|man|person) started (?:following|stalking|watching)/i,
+        /(?:guy|man|person) kept (?:following|appearing|showing up)/i,
+        /(?:guy|man|person) trapped (?:me|us)/i,
+        /(?:guy|man|person) wouldn't let (?:me|us) (?:leave|go|move)/i,
+        /(?:guy|man|person) threatened (?:me|us)/i,
+        /(?:guy|man|person) said (?:they|he|she) would (?:hurt|kill|harm)/i
       ]
       
       for (const pattern of incidentPatterns) {
@@ -333,6 +509,20 @@ export class SecureNLPPipeline {
           extracted.incident_narrative = 'Someone approached me'
           break
         }
+      }
+      
+      // Extract more specific incident details
+      if (text.match(/touched|grabbed|held|pushed|pulled/i)) {
+        extracted.incident_narrative = 'Physical contact occurred'
+      }
+      if (text.match(/threatened|said they would|said he would|said she would/i)) {
+        extracted.incident_narrative = 'Threats were made'
+      }
+      if (text.match(/followed|stalking|watching/i)) {
+        extracted.incident_narrative = 'Someone was following me'
+      }
+      if (text.match(/trapped|wouldn't let|couldn't leave/i)) {
+        extracted.incident_narrative = 'I was trapped or prevented from leaving'
       }
     }
 
@@ -349,13 +539,14 @@ export class SecureNLPPipeline {
     if (indicators.hasVulnerability) riskScore += 2
     if (indicators.hasPhysicalContact) riskScore += 3
     if (indicators.hasEmotionalDistress) riskScore += 2
+    if (indicators.hasComplexTrauma) riskScore += 4 // Higher weight for complex trauma
 
     // Intent-based risk
     if (intent === 'report_incident') riskScore += 3
     if (intent === 'request_help') riskScore += 2
 
     // Content-based risk (check for specific high-risk words)
-    const highRiskWords = ['hurt', 'kill', 'threaten', 'scared', 'afraid', 'terrified', 'dangerous', 'force', 'forced']
+    const highRiskWords = ['hurt', 'kill', 'threaten', 'scared', 'afraid', 'terrified', 'dangerous', 'force', 'forced', 'trapped', 'helpless', 'powerless', 'stalked', 'violated']
     const text = JSON.stringify(extractedData).toLowerCase()
     highRiskWords.forEach(word => {
       if (text.includes(word)) riskScore += 2
@@ -365,8 +556,14 @@ export class SecureNLPPipeline {
     const hasPersonalInfo = extractedData.first_name || extractedData.email || extractedData.phone_number
     if (!hasPersonalInfo) riskScore += 1
 
-    if (riskScore >= 8) return 'high'
-    if (riskScore >= 4) return 'medium'
+    // Age-based risk (minors are higher risk)
+    if (extractedData.age && parseInt(extractedData.age) < 18) riskScore += 2
+
+    // Disability-based risk
+    if (extractedData.disability === 'Yes') riskScore += 1
+
+    if (riskScore >= 10) return 'high'
+    if (riskScore >= 5) return 'medium'
     return 'low'
   }
 
@@ -520,9 +717,18 @@ export class SecureNLPPipeline {
       return "When did this happen? Can you tell me the date and time?"
     }
     
+    // If we have timing info, acknowledge it and ask for location
+    if (extractedData.start_day && !extractedData.town_city) {
+      let timingAck = "I understand when this happened"
+      if (extractedData.start_time) {
+        timingAck += ` at ${extractedData.start_time}`
+      }
+      return `${timingAck}. Can you tell me where this occurred?`
+    }
+    
     // If we have location info but missing timing
-    if (extractedData.town_city && !extractedData.start_day && text.match(/central london|waiting|toilet/i)) {
-      return "I understand you were in Central London. Can you tell me when this happened? What day and time was it?"
+    if (extractedData.town_city && !extractedData.start_day && text.match(/waiting|toilet/i)) {
+      return `I understand you were in ${extractedData.town_city}. Can you tell me when this happened? What day and time was it?`
     }
     
     // If we have perpetrator info but missing incident details
@@ -533,6 +739,19 @@ export class SecureNLPPipeline {
     // If we have vulnerability info but missing incident details
     if (extractedData.disability === 'Yes' && extractedData.age && !extractedData.incident_narrative) {
       return "I understand you're young and use a wheelchair. Can you tell me what happened when this person came up to you?"
+    }
+    
+    // Enhanced handling for complex trauma patterns
+    if (text.match(/trapped|wouldn't let|couldn't leave/i)) {
+      return "That sounds like a very frightening experience. You're being very brave by sharing this. Can you tell me more about what happened when you felt trapped?"
+    }
+    
+    if (text.match(/followed|stalking|watching/i)) {
+      return "Being followed or watched is very scary. Can you tell me more about what happened when you noticed someone following you?"
+    }
+    
+    if (text.match(/threatened|said they would|said he would|said she would/i)) {
+      return "Threats are very serious and frightening. Can you tell me what happened when this person threatened you?"
     }
     
     // Default to asking for missing information
@@ -568,7 +787,7 @@ export class SecureNLPPipeline {
       case 'age':
         return "How old are you? This helps us provide appropriate support."
       case 'timing':
-        return "When did this happen? Can you tell me the date and time?"
+        return "When did this happen? You can say things like 'yesterday', 'last week', 'this morning', or give me a specific date and time."
       case 'location':
         return "Where did this happen? Can you tell me the location or area?"
       case 'narrative':
@@ -582,6 +801,49 @@ export class SecureNLPPipeline {
     }
   }
 
+  private generateContextualResponse(intent: string, riskLevel: 'low' | 'medium' | 'high', extractedData: Record<string, any>, text: string, nextQuestion: string): string {
+    const state = this.stateManager.getState()
+    const name = state.extractedData.first_name || 'there'
+
+    // If we just got new data, acknowledge it and ask the next question
+    if (Object.keys(extractedData).length > 0) {
+      // Check if we just got a name
+      if (extractedData.first_name && !state.progress.hasAge) {
+        return `Thank you ${extractedData.first_name}. How old are you? This helps us provide appropriate support.`
+      }
+      
+      // Check if we just got an age
+      if (extractedData.age && state.progress.hasName && !state.progress.hasTiming) {
+        return "When did this happen? You can say things like 'yesterday', 'last week', 'this morning', or give me a specific date and time."
+      }
+      
+      // Check if we just got timing info
+      if (extractedData.start_day && !state.progress.hasLocation) {
+        let timingAck = "I understand when this happened"
+        if (extractedData.start_time) {
+          timingAck += ` at ${extractedData.start_time}`
+        }
+        return `${timingAck}. Can you tell me where this occurred?`
+      }
+      
+      // Check if we just got location info
+      if (extractedData.town_city && !state.progress.hasNarrative) {
+        return `I understand you were in ${extractedData.town_city}. Can you tell me what happened? What did this person do or say?`
+      }
+      
+      // Check if we just got incident narrative
+      if (extractedData.incident_narrative && !state.progress.hasEvidence) {
+        return "Thank you for sharing that. Do you have any photos, videos, or other evidence from the incident?"
+      }
+      
+      // Default acknowledgment and next question
+      return nextQuestion
+    }
+
+    // If no new data extracted, ask the next question
+    return nextQuestion
+  }
+
   async processInput(text: string): Promise<ProcessedInput> {
     const sanitized = this.sanitizeInput(text)
     const indicators = this.detectTraumaIndicators(sanitized)
@@ -590,7 +852,13 @@ export class SecureNLPPipeline {
     const extractedData = this.extractDataWithContext(sanitized, intent, indicators)
     const riskLevel = this.assessTraumaRisk(indicators, intent, extractedData)
     
-    // Generate intelligent response focused on information extraction
+    // Update conversation state with new data
+    this.stateManager.updateState(extractedData)
+    
+    // Get the next question based on current state
+    const { question: nextQuestion, stage } = this.stateManager.getNextQuestion()
+    
+    // Generate intelligent response
     let response = this.generateIntelligentResponse(intent, riskLevel, extractedData, sanitized)
     
     // Special handling for minors who mention being alone
@@ -616,6 +884,17 @@ export class SecureNLPPipeline {
       response = "I understand you use a wheelchair and were alone when something happened. That must have been really difficult. Can you tell me what occurred when you were by yourself?"
     }
 
+    // Special handling for complex trauma patterns
+    if (indicators.hasComplexTrauma) {
+      if (text.match(/trapped|wouldn't let|couldn't leave/i)) {
+        response = "Being trapped or prevented from leaving is extremely frightening. You're being very brave by sharing this. Can you tell me more about what happened when you felt trapped?"
+      } else if (text.match(/followed|stalking|watching/i)) {
+        response = "Being followed or watched is very scary and violating. Can you tell me more about what happened when you noticed someone following you?"
+      } else if (text.match(/threatened|said they would/i)) {
+        response = "Threats are very serious and frightening. I want you to know you're safe here. Can you tell me what happened when this person threatened you?"
+      }
+    }
+
     const confidence = this.calculateConfidence(indicators, intent, extractedData, sanitized)
 
     // SECURITY: Log only non-sensitive metadata
@@ -623,7 +902,9 @@ export class SecureNLPPipeline {
       intent,
       riskLevel,
       confidence: confidence.toFixed(2),
-      hasExtractedData: Object.keys(extractedData).length > 0
+      hasExtractedData: Object.keys(extractedData).length > 0,
+      currentStage: stage,
+      hasComplexTrauma: indicators.hasComplexTrauma
     })
 
     const responseId = Date.now().toString()
@@ -636,7 +917,9 @@ export class SecureNLPPipeline {
       response,
       indicators,
       confidence,
-      responseId
+      responseId,
+      nextQuestion,
+      progress: this.stateManager.getState().progress
     }
   }
 } 

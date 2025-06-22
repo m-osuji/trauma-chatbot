@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const nlpPipeline = SecureNLPPipeline.getInstance()
     const processed = await nlpPipeline.processInput(lastUserMessage)
     
-    // Generate response
+    // Use the intelligent response from the state manager
     let response = processed.response
     
     // Simple repetition prevention
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     lastResponse = response
     
     // Log confidence for debugging but never expose user data
-    console.log(`Processing confidence: ${processed.confidence.toFixed(2)}`)
+    console.log(`Processing confidence: ${processed.confidence.toFixed(2)}, Stage: ${processed.nextQuestion}`)
     
     // Return the secure NLP response
     return new Response(
