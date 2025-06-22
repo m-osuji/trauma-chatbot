@@ -10,15 +10,16 @@ We aimed to change that. By reframing the initial reporting process as a support
 ## Core Functionality
 Our chatbot's key features are designed for ease of use, security, and survivor-centric care.
 
-- ***Speech-First Interaction***: Powered by **Eleven Labs API**, our project provides a fully voice-activated, natural conversational experience for incident reporting, with a text-based fallback. **Users can speak if they can't type, and type if they can't speak**. Accessibility is key.
-- ***Intelligent Information Gathering***: Utilises Natural Language Processing (NLP) to extract key details from conversation, dynamically structuring and autofilling the report form
+- ***Speech-First Interaction***: Our project provides a fully voice-activated, natural conversational experience for incident reporting, with a text-based fallback. **Users can speak if they can't type, and type if they can't speak**. Accessibility is key.
+- ***Intelligent Information Gathering***: Our chatbot utilises Natural Language Processing (NLP) to extract key details from conversation, dynamically structuring and autofilling the report form
 - ***Trauma-Informed Design***: Prioritises empathy, patience and non-judgement in every interaction. Users maintain control, with clear statements that it's **not a substitute for professional human support**.
 - ***Robust Data Security & Privacy***: Despite the use of vibe coding throughout the development process, all user information is handled with paramount confidentiality, adhering to GDPR compliance (UK) through encryption and anonymisation to protect survivor anonymity. Consent is always explicitly sought before proceeding.
-- ***Dynamic & Intuitive Interface***: Features a clean, calm-toned UI that visually updates the report form in real-time as information is provided, enhancing transparency and user experience.
+- ***Dynamic & Intuitive Interface***: Our project features a clean, calm-toned UI that visually updates the report form in real-time as information is provided, enhancing transparency and user experience.
 
 ## Future Developments
-- ***Official Form Integration*** - Directly connecting this tool to official reporting platforms to seamlessly autofill collected incident details in the browser, would further streamline the formal reporting process.
-- ***Multilingual Support*** - SA doesn't only happen to English speakers. Expanding language options to ensure victims from diverse linguistic backgrounds can access this crucial support would break down additional barriers to reporting.
+- ***- Google Cloud TTS Integration*** - The ability for the chatbot to speak back to the user if they wish, would help further simulate a natural, open conversation.
+- ***Official Form Integration***: Directly connecting this tool to official reporting platforms to seamlessly autofill collected incident details in the browser, would further streamline the formal reporting process.
+- ***Multilingual Support***: SA doesn't only happen to English speakers. Expanding language options to ensure victims from diverse linguistic backgrounds can access this crucial support would break down additional barriers to reporting.
 
 ## Setup
 
